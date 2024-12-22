@@ -2,7 +2,7 @@
 import numpy as np
 from typing import *
 from enum import Enum
-import residue_constants
+from colabdesign.af.alphafold.common import residue_constants
 
 class RelativeASAReference(NamedTuple):
     """Reference values for relative ASA calculations."""
