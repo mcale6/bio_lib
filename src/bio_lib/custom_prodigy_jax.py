@@ -4,14 +4,14 @@ from dataclasses import dataclass
 import numpy as np
 import jax.numpy as jnp
 import jax
-from .common.residue_constants import residue_constants
-from .common.protein import Protein
-from .common.residue_classification import ResidueClassification, ResidueCharacter
-from .common.residue_library import default_library as residue_library
-from shrake_rupley_jax import calculate_sasa
+import bio_lib.common.residue_constants as residue_constants
+import bio_lib.common.protein as Protein
+from bio_lib.common.residue_classification import ResidueClassification, ResidueCharacter
+from bio_lib.common.residue_library import default_library as residue_library
+from .shrake_rupley_jax import calculate_sasa
 
 RESIDUE_RADII_MATRIX = jnp.array(residue_library.radii_matrix)
-REFERENCE_RELATIVE_SASA_ARRAY = jnp.array(ResidueClassification.ref_rel_sasa_array)
+REFERENCE_RELATIVE_SASA_ARRAY = jnp.array(ResidueClassification().ref_rel_sasa_array)
 
 @dataclass
 class ContactAnalysis:
@@ -177,7 +177,7 @@ def get_residue_character_indices(classification_type: str = "ic") -> Tuple[jnp.
         jnp.array(character_indices[ResidueCharacter.ALIPHATIC])
     )
 
-def load_pdb(pdb_path: str, target_chain: str, binder_chain: str) -> Tuple[Protein, Protein]:
+def load_pdb(pdb_path: str, target_chain: str, binder_chain: str):
     with open(pdb_path, 'r') as f:
         pdb_str = f.read()
     

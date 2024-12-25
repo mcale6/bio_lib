@@ -5,7 +5,7 @@ import json
 import sys
 from datetime import datetime
 
-from custom_prodigy_jax import run
+from .custom_prodigy_jax import run
 
 def setup_output_path(pdb_path: Path, output_dir: Path) -> Path:
     """Setup output directory and generate output filename."""

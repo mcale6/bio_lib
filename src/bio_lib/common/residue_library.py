@@ -58,7 +58,7 @@ class ResidueLibrary:
         """Build matrix of atom radii for all residue types from residue_constants.
         Array of shape [n_residue_types, n_atoms] containing radii values
         """
-        from .residue_constants import residue_constants
+        from . import residue_constants
         
         radii_by_aa: Dict[str, list[float]] = {}
         for aa in residue_constants.restypes:
