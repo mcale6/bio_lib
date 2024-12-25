@@ -138,11 +138,13 @@ class ProdigyResults:
     def __str__(self) -> str:
         """Human-readable string representation."""
         return (
+            f"------------------------\n"
             f"PRODIGY Analysis Results\n"
             f"------------------------\n"
             f"Binding Energy (ΔG): {self.binding_affinity:.2f} kcal/mol\n"
             f"Binding Category: {self.get_binding_category()}\n"
             f"Dissociation Constant (Kd): {self.dissociation_constant:.2e} M\n"
+            f"------------------------\n"
             f"\nContact Analysis:\n"
             f"  Charged-Charged: {self.contact_types.CC:.1f}\n"
             f"  Polar-Polar: {self.contact_types.PP:.1f}\n"
@@ -150,10 +152,12 @@ class ProdigyResults:
             f"  Aliphatic-Charged: {self.contact_types.AC:.1f}\n"
             f"  Aliphatic-Polar: {self.contact_types.AP:.1f}\n"
             f"  Charged-Polar: {self.contact_types.CP:.1f}\n"
+            f"------------------------\n"
             f"\nNon-Interacting Surface:\n"
             f"  Aliphatic: {self.nis_aliphatic:.1f}%\n"
             f"  Charged: {self.nis_charged:.1f}%\n"
             f"  Polar: {self.nis_polar:.1f}%\n"
+            f"------------------------\n"
         )
 
 def get_residue_character_indices(classification_type: str = "ic") -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
@@ -191,11 +195,11 @@ def get_atom_radii(aatype: jnp.ndarray) -> jnp.ndarray:
     return jnp.matmul(seq_one_hot, RESIDUE_RADII_MATRIX).reshape(-1)
 
 def calculate_contacts(target_pos: jnp.ndarray, binder_pos: jnp.ndarray, target_mask: jnp.ndarray, binder_mask: jnp.ndarray, cutoff: float = 5.5) -> jnp.ndarray:
-    print(f"Input shapes:")
-    print(f"target_pos: {target_pos.shape}")
-    print(f"binder_pos: {binder_pos.shape}")
-    print(f"target_mask: {target_mask.shape}")
-    print(f"binder_mask: {binder_mask.shape}")
+    #print(f"Input shapes:")
+    #print(f"target_pos: {target_pos.shape}")
+    #print(f"binder_pos: {binder_pos.shape}")
+    #print(f"target_mask: {target_mask.shape}")
+    #print(f"binder_mask: {binder_mask.shape}")
 
     # Reshape to atoms
     target_atoms = target_pos.reshape(-1, 3)
@@ -203,24 +207,24 @@ def calculate_contacts(target_pos: jnp.ndarray, binder_pos: jnp.ndarray, target_
     target_atom_mask = target_mask.reshape(-1)
     binder_atom_mask = binder_mask.reshape(-1)
 
-    print(f"\nAfter initial reshape:")
-    print(f"target_atoms: {target_atoms.shape}")
-    print(f"binder_atoms: {binder_atoms.shape}")
-    print(f"target_atom_mask: {target_atom_mask.shape}")
-    print(f"binder_atom_mask: {binder_atom_mask.shape}")
+    #print(f"\nAfter initial reshape:")
+    #print(f"target_atoms: {target_atoms.shape}")
+    #print(f"binder_atoms: {binder_atoms.shape}")
+    #print(f"target_atom_mask: {target_atom_mask.shape}")
+    #print(f"binder_atom_mask: {binder_atom_mask.shape}")
 
     # Calculate pairwise distances
     diff = target_atoms[:, None, :] - binder_atoms[None, :, :]
-    print(f"\nDiff shape: {diff.shape}")  # [target_len*37, binder_len*37, 3]
+    #print(f"\nDiff shape: {diff.shape}")  # [target_len*37, binder_len*37, 3]
     
     dist2 = jnp.sum(diff * diff, axis=-1)
-    print(f"Distance matrix shape: {dist2.shape}")  # [target_len*37, binder_len*37]
+    #print(f"Distance matrix shape: {dist2.shape}")  # [target_len*37, binder_len*37]
 
     # Convert masks to boolean and combine with distance check
     atom_contacts = (dist2 <= (cutoff * cutoff)) & \
                    (target_atom_mask[:, None] > 0) & \
                    (binder_atom_mask[None, :] > 0)
-    print(f"Atom contacts shape: {atom_contacts.shape}")
+    #print(f"Atom contacts shape: {atom_contacts.shape}")
 
     # Reshape to residue pairs
     target_len = target_pos.shape[0]
@@ -229,11 +233,11 @@ def calculate_contacts(target_pos: jnp.ndarray, binder_pos: jnp.ndarray, target_
 
     contacts_reshaped = atom_contacts.reshape(target_len, atoms_per_res,
                                             binder_len, atoms_per_res)
-    print(f"\nContacts reshaped: {contacts_reshaped.shape}")  # [target_len, 37, binder_len, 37]
+    #print(f"\nContacts reshaped: {contacts_reshaped.shape}")  # [target_len, 37, binder_len, 37]
 
     # Any atom-atom contact makes a residue-residue contact
     residue_contacts = jnp.any(jnp.any(contacts_reshaped, axis=-1), axis=1)
-    print(f"Final residue contacts shape: {residue_contacts.shape}")  # [target_len, binder_len]
+    #print(f"Final residue contacts shape: {residue_contacts.shape}")  # [target_len, binder_len]
 
     return residue_contacts
 
@@ -303,15 +307,12 @@ def analyse_nis_soft(sasa_values: jnp.ndarray, aa_probs: jnp.ndarray, threshold:
         
     nis_mask = (sasa_values >= threshold)
     n_total = jnp.sum(nis_mask)
-    print("nis count:", n_total)
     
     n_charged = jnp.sum(nis_mask * p_charged)
     n_polar = jnp.sum(nis_mask * p_polar)
     n_aliph = jnp.sum(nis_mask * p_aliph)
     
-    print("Raw counts before percentage:")
-    print(f"Aliph: {n_aliph}, Charged: {n_charged}, Polar: {n_polar}")
-    print(f"Sum: {n_aliph + n_charged + n_polar} (should equal nis count)")
+    #assert (n_aliph + n_charged + n_polar) == n_total
     
     total = n_total + 1e-8
     return (
@@ -382,7 +383,7 @@ def dg_to_kd(dg: float, temperature: float = 25.0) -> float:
     rt = 0.0019858775 * (temperature + 273.15)  # R in kcal/(mol·K)
     
     # Calculate Kd with numerical stability
-    kd = jnp.exp(jnp.clip(dg / rt, -50, 0))  # clip to avoid overflow
+    kd = jnp.exp(dg / rt)
     
     return kd
 
@@ -444,7 +445,7 @@ def run(
         nis_c
     )
     kd = dg_to_kd(dg, temperature=25.0)
-
+    return dg
     return ProdigyResults(
             contact_types=ContactAnalysis(**contact_types),
             binding_affinity=dg,

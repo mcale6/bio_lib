@@ -5,9 +5,7 @@ from bio_lib.common.residue_classification import ResidueClassification, Residue
 from bio_lib.custom_prodigy_jax import run as run_prodigy
 from bio_lib.shrake_rupley_jax import calculate_sasa
 import pkg_resources
-
-# Version
-__version__ = "0.1.0"
+from .version import __version__
 
 # Data path helper
 def get_data_path(filename: str) -> str:

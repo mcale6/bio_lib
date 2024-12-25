@@ -5,8 +5,8 @@ A library for biological computations with JAX support, featuring PRODIGY bindin
 ## Installation
 
 ```bash
-pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple bio-lib==0.1.1
-
+!python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ bio_lib==0.2.8
+```
 ## Usage
 from bio_lib import run_prodigy_jax
 

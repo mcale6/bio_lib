@@ -5,7 +5,7 @@ import pkg_resources
 
 def _load_sphere_points() -> np.ndarray:
     """Load sphere points from package data."""
-    sphere_path = pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz')
+    sphere_path = pkg_resources.resource_filename('bio_lib', 'data/thomson15092.xyz')
     return np.loadtxt(sphere_path, skiprows=1)
 
 # Create constant

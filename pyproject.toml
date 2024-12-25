@@ -4,23 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bio_lib"
-version = "0.2.0"
+dynamic = ["version"]
 description = "A library for biological computations with JAX support"
 requires-python = ">=3.7"
-authors = [
-    { name = "mcale6" }
-]
-dependencies = [
-    "biopython",
-    "numpy",
-    "jax",
-    "jaxlib",
-]
+authors = [{ name = "mcale6" }]
+dependencies = ["biopython", "numpy", "jax", "jaxlib"]
 readme = "README.md"
 license = { file = "LICENSE" }
-
-[project.optional-dependencies]
-test = ["pytest"]
 
 [project.scripts]
 run-prodigy = "bio_lib.run_prodigy_jax:main"
@@ -30,7 +20,7 @@ packages = ["bio_lib"]
 sources = ["src"]
 
 [tool.hatch.build]
-artifacts = [
-    "src/bio_lib/data/*.xyz",
-    "src/bio_lib/data/*.radii"
-]
+packages = ["src/bio_lib"]
+
+[tool.hatch.version]
+path = "src/bio_lib/version.py"
