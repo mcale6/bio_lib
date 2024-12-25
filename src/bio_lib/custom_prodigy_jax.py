@@ -87,22 +87,10 @@ class ProdigyResults:
     nis_polar: float  # % non-interacting surface that is polar
 
     def __post_init__(self):
-        """Validate values and convert arrays to floats."""
-        if not isinstance(self.contact_types, ContactAnalysis):
-            self.contact_types = ContactAnalysis(**self.contact_types)
-        
-        # Convert any jax arrays to floats
-        float_fields = ['binding_affinity', 'dissociation_constant', 
-                       'nis_aliphatic', 'nis_charged', 'nis_polar']
-        for field in float_fields:
-            value = getattr(self, field)
-            setattr(self, field, float(value))
-
-        # Validate NIS percentages
-        for field in ['nis_aliphatic', 'nis_charged', 'nis_polar']:
-            value = getattr(self, field)
-            if not 0 <= value <= 100:
-                raise ValueError(f"{field} must be between 0 and 100, got {value}")
+        """Convert all values to float."""
+        for field_name, value in self.__dict__.items():
+            if field_name != 'contact_types':
+                setattr(self, field_name, float(value))
 
     @property
     def total_nis(self) -> float:
@@ -120,19 +108,20 @@ class ProdigyResults:
         else:
             return "Weak"
 
-    def to_dict(self) -> Dict[str, float | Dict[str, float]]:
-        """Convert results to a nested dictionary."""
+    def to_dict(self) -> Dict[str, float]:
+        """Convert results to a flat dictionary."""
         return {
-            'contacts': self.contact_types.to_dict(),
-            'binding_affinity': self.binding_affinity,
-            'binding_category': self.get_binding_category(),
-            'dissociation_constant': self.dissociation_constant,
-            'nis': {
-                'aliphatic': self.nis_aliphatic,
-                'charged': self.nis_charged,
-                'polar': self.nis_polar,
-                'total': self.total_nis
-            },
+            'DG': self.binding_affinity,
+            'ba_val': self.binding_affinity,
+            'CC': self.contact_types.CC,
+            'CP': self.contact_types.CP,
+            'AC': self.contact_types.AC,
+            'PP': self.contact_types.PP,
+            'AP': self.contact_types.AP,
+            'AA': self.contact_types.AA,
+            'nis_p': self.nis_polar,
+            'nis_a': self.nis_aliphatic,
+            'nis_c': self.nis_charged
         }
 
     def __str__(self) -> str:
@@ -394,6 +383,7 @@ def run(
     cutoff: float = 5.5,
     acc_threshold: float = 0.05,
 ) -> ProdigyResults:
+#)-> Dict[str, float]:
     """Run the full PRODIGY analysis pipeline."""
     # Get coordinates and masks
     target, binder = load_pdb(pdb_path, target_chain, binder_chain)
@@ -445,7 +435,6 @@ def run(
         nis_c
     )
     kd = dg_to_kd(dg, temperature=25.0)
-    return dg
     return ProdigyResults(
             contact_types=ContactAnalysis(**contact_types),
             binding_affinity=dg,
@@ -454,3 +443,14 @@ def run(
             nis_charged=nis_c,
             nis_polar=nis_p,
         )
+    return {
+            "CC": float(contact_types["CC"].item()),
+            "AC": float(contact_types["AC"].item()),
+            "PP":float(contact_types["PP"].item()),
+            "AP":float(contact_types["AP"].item()),
+            "ba_val":float(dg.item()),
+            "DG":float(kd.item()),
+            "nis_a":float(nis_a.item()),
+            "nis_c":float(nis_c.item()),
+            "nis_p":float(nis_p.item())
+        }
