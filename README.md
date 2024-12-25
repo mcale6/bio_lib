@@ -1,11 +1,21 @@
-# bio_lib
+# Bio-Lib
 
-## Setting up the Conda Environment
+A library for biological computations with JAX support, featuring PRODIGY binding affinity predictions in pure jax.
 
-Create a new conda environment:
-```sh
-conda create -n bio_lib python=3.10
-conda activate bio_lib
-pip -q install git+https://github.com/sokrypton/ColabDesign.git@v1.1.1
-conda install -c conda-forge biopython
+## Installation
+
+```bash
+pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple bio-lib==0.1.1
+
+## Usage
+from bio_lib import run_prodigy_jax
+
+# Run PRODIGY analysis
+results = run_prodigy_jax.run("complex.pdb", "A", "B")
+print(results)
+```
+
+## Or from command line:
+```
+run-prodigy-jax complex.pdb A B --format human
 ```

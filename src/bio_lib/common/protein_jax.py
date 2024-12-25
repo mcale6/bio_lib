@@ -2,8 +2,8 @@ import numpy as np
 import dataclasses
 from typing import Optional
 import jax.numpy as jnp
-from colabdesign.af.alphafold.common import residue_constants
-import common.residue_library as ResidueLibrary
+from . import residue_constants
+from .residue_library import ResidueLibrary
 from Bio import PDB
 
 @dataclasses.dataclass

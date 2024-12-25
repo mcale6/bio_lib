@@ -1,8 +1,7 @@
-
 import numpy as np
 from typing import *
 from enum import Enum
-from colabdesign.af.alphafold.common import residue_constants
+from . import residue_constants
 
 class RelativeASAReference(NamedTuple):
     """Reference values for relative ASA calculations."""
@@ -99,6 +98,7 @@ class ResidueClassification:
         self.classification_type = classification_type
         # Convert property dictionaries to ordered arrays
         self._init_ordered_props()
+        self.ref_rel_sasa_array = self._build_ref_rel_sasa_array()
 
     def _init_ordered_props(self):
         """Initialize ordered property arrays matching residue_constants order."""
@@ -108,6 +108,13 @@ class ResidueClassification:
                 prop_dict[aa] for aa in residue_constants.restypes
             ])
 
+    def _build_ref_rel_sasa_array(self) -> np.ndarray:
+        """Build array of reference SASA values for all residue types."""
+        return np.array([
+            self.rel_asa[residue_constants.restype_1to3[aa]].total 
+            for aa in residue_constants.restypes
+        ])
+    
     def get_character(self, residue: str) -> ResidueCharacter:
         """Get the character classification of a residue."""
         return self.aa_character[self.classification_type].get(residue, ResidueCharacter.ALIPHATIC)
@@ -140,3 +147,4 @@ class ResidueClassification:
             "backbone_relative": (backbone_asa / ref.backbone) * 100,
             "sidechain_relative": (sidechain_asa / ref.sidechain) * 100
         }
+

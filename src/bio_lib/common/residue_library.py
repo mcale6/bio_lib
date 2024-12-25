@@ -1,6 +1,8 @@
-from typing import *
+from typing import NamedTuple, Dict
 from pathlib import Path
 from collections import defaultdict
+import pkg_resources
+import numpy as np
 
 class AtomInfo(NamedTuple):
     """Store atom information."""
@@ -8,12 +10,17 @@ class AtomInfo(NamedTuple):
     is_polar: bool
 
 class ResidueLibrary:
-    """Handles atom radii and polarity."""
-    def __init__(self, library_input: Path = Path("./common/vdw.radii")):
-        with open(library_input, 'r') as file: # care here
+    """Handles atom radii."""
+    def __init__(self, library_input: Path = None):
+        if library_input is None:
+            # Get default path from package data
+            library_input = pkg_resources.resource_filename('bio_lib', 'data/vdw.radii')
+        
+        with open(library_input, 'r') as file:
             library_text = file.read()
         self.residue_atoms = defaultdict(dict)
         self._parse_library(library_text)
+        self.radii_matrix = self._build_radii_matrix()
 
     def _parse_library(self, text: str):
         current_residue = None
@@ -36,7 +43,7 @@ class ResidueLibrary:
         atom_info = self.residue_atoms.get(residue, {}).get(atom)
         if atom_info:
             return atom_info.radius
-
+        # Use default radius for element if not found
         element_radii = {
             'H': 1.20, 'C': 1.70, 'N': 1.55, 'O': 1.52, 'S': 1.80,
             'P': 1.80, 'FE': 1.47, 'ZN': 1.39, 'MG': 1.73
@@ -47,3 +54,19 @@ class ResidueLibrary:
         atom_info = self.residue_atoms.get(residue, {}).get(atom)
         return bool(atom_info and atom_info.is_polar)
     
+    def _build_radii_matrix(self) -> np.ndarray:
+        """Build matrix of atom radii for all residue types from residue_constants.
+        Array of shape [n_residue_types, n_atoms] containing radii values
+        """
+        from .residue_constants import residue_constants
+        
+        radii_by_aa: Dict[str, list[float]] = {}
+        for aa in residue_constants.restypes:
+            res_name = residue_constants.restype_1to3[aa]
+            radii_by_aa[aa] = [
+                self.get_radius(res_name, atom_name, atom_name[0])
+                for atom_name in residue_constants.atom_types
+            ]
+        return np.array([radii_by_aa[aa] for aa in residue_constants.restypes])
+
+default_library = ResidueLibrary()

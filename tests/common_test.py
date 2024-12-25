@@ -1,6 +1,6 @@
 # Example of actual atoms vs padded representation
-from colabdesign.af.alphafold.common import residue_constants
-import common.residue_library as ResidueLibrary
+from bio_lib.common import residue_constants
+from bio_lib.common.residue_library import ResidueLibrary
 import numpy as np
 
 residue_library = ResidueLibrary()
@@ -51,8 +51,6 @@ def analyze_residue_radii(aa_code):
 
     return analyze_residue_radii
 
-analyze_residue_radii("ALA")
-
 def demo_radius_calculation():
     # 1. Setup simplified radii dictionary for just 3 amino acids
     simple_radii = {
@@ -90,5 +88,5 @@ def demo_radius_calculation():
 
     return radii, final_radii
 
-# Run example
+analyze_residue_radii("ALA")
 weighted_radii, flattened_radii = demo_radius_calculation()
