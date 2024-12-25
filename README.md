@@ -17,7 +17,7 @@ A Python library for analyzing protein interactions, calculating Solvent Accessi
 
 ## Benchmark Results
 
-![Benchmark Analysis](benchmark/analysis_plots.png)
+![Benchmark Analysis](benchmark/analysis_plots2.png)
 
 
 ## Usage
