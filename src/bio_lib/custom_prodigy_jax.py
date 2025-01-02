@@ -8,6 +8,7 @@ import bio_lib.common.residue_constants as residue_constants
 import bio_lib.common.protein as Protein
 from bio_lib.common.residue_classification import ResidueClassification, ResidueCharacter
 from bio_lib.common.residue_library import default_library as residue_library
+from bio_lib.common.protein_jax import JAXStructureData, JaxProtein
 from .shrake_rupley_jax import calculate_sasa
 
 RESIDUE_RADII_MATRIX = jnp.array(residue_library.radii_matrix)
@@ -170,12 +171,20 @@ def get_residue_character_indices(classification_type: str = "ic") -> Tuple[jnp.
         jnp.array(character_indices[ResidueCharacter.ALIPHATIC])
     )
 
-def load_pdb(pdb_path: str, target_chain: str, binder_chain: str):
+def load_pdb_to_af(pdb_path: str, target_chain: str, binder_chain: str):
     with open(pdb_path, 'r') as f:
         pdb_str = f.read()
     
     target = Protein.from_pdb_string(pdb_str, chain_id=target_chain)
     binder = Protein.from_pdb_string(pdb_str, chain_id=binder_chain)
+    
+    return target, binder
+
+def load_pdb_to_jax(pdb_path: str, target_chain: str, binder_chain: str) -> Tuple[JAXStructureData, JAXStructureData]:
+
+    processor = JaxProtein()
+    target = processor.process_pdb(pdb_path, selected_chains=[target_chain])
+    binder = processor.process_pdb(pdb_path, selected_chains=[binder_chain])
     
     return target, binder
 
@@ -386,7 +395,7 @@ def run(
 #)-> Dict[str, float]:
     """Run the full PRODIGY analysis pipeline."""
     # Get coordinates and masks
-    target, binder = load_pdb(pdb_path, target_chain, binder_chain)
+    target, binder = load_pdb_to_af(pdb_path, target_chain, binder_chain)
     
     # Convert sequences to one-hot
     num_classes = len(residue_constants.restypes)
