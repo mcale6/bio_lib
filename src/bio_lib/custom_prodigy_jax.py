@@ -1,4 +1,4 @@
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 from pathlib import Path
 from dataclasses import dataclass
 import numpy as np
@@ -188,11 +188,56 @@ def load_pdb_to_jax(pdb_path: str, target_chain: str, binder_chain: str) -> Tupl
     
     return target, binder
 
-def get_atom_radii(aatype: jnp.ndarray) -> jnp.ndarray: ### check this
+def get_atom_radii(aatype: jnp.ndarray) -> jnp.ndarray: ### to docheck this
     seq_one_hot = jax.nn.one_hot(aatype, len(residue_constants.restypes))
     return jnp.matmul(seq_one_hot, RESIDUE_RADII_MATRIX).reshape(-1)
 
-def calculate_contacts(target_pos: jnp.ndarray, binder_pos: jnp.ndarray, target_mask: jnp.ndarray, binder_mask: jnp.ndarray, cutoff: float = 5.5) -> jnp.ndarray:
+
+def calculate_contacts_jax(
+    target_pos: jnp.ndarray,
+    binder_pos: jnp.ndarray,
+    target_mask: jnp.ndarray,
+    binder_mask: jnp.ndarray,
+    target_residue_numbers: jnp.ndarray,
+    binder_residue_numbers: jnp.ndarray,
+    cutoff: float = 5.5
+) -> jnp.ndarray:
+    """Calculate contacts using JAX protein format - vectorized version."""
+    # Calculate all atom-atom distances
+    diff = target_pos[:, None, :] - binder_pos[None, :, :]  # [target_atoms, binder_atoms, 3]
+    dist2 = jnp.sum(diff * diff, axis=-1)  # [target_atoms, binder_atoms]
+    
+    # Get atom contacts
+    atom_contacts = (dist2 <= (cutoff * cutoff)) & \
+                   (target_mask[:, None] > 0) & \
+                   (binder_mask[None, :] > 0)  # [target_atoms, binder_atoms]
+    
+    # Get unique residue numbers and create mappings
+    target_unique_res = jnp.unique(target_residue_numbers)  # [n_target_res]
+    binder_unique_res = jnp.unique(binder_residue_numbers)  # [n_binder_res]
+    
+    # Create one-hot encodings for residue membership
+    target_res_one_hot = (target_residue_numbers[:, None] == target_unique_res)  # [target_atoms, n_target_res]
+    binder_res_one_hot = (binder_residue_numbers[:, None] == binder_unique_res)  # [binder_atoms, n_binder_res]
+    
+    # Use matrix multiplication to aggregate contacts
+    # (target_atoms, binder_atoms) @ (binder_atoms, n_binder_res) -> (target_atoms, n_binder_res)
+    contacts_per_target_atom = jnp.matmul(atom_contacts, binder_res_one_hot)  
+    
+    # (n_target_res, target_atoms) @ (target_atoms, n_binder_res) -> (n_target_res, n_binder_res)
+    residue_contacts = jnp.matmul(target_res_one_hot.T, contacts_per_target_atom)
+    
+    # Convert to boolean - any atom contact means residue contact
+    return residue_contacts > 0
+
+def calculate_contacts_af(
+    target_pos: jnp.ndarray,
+    binder_pos: jnp.ndarray,
+    target_mask: jnp.ndarray,
+    binder_mask: jnp.ndarray,
+    cutoff: float = 5.5
+) -> jnp.ndarray:
+    """Calculate contacts using AlphaFold protein format with 37 atoms per residue."""
     #print(f"Input shapes:")
     #print(f"target_pos: {target_pos.shape}")
     #print(f"binder_pos: {binder_pos.shape}")
@@ -238,6 +283,31 @@ def calculate_contacts(target_pos: jnp.ndarray, binder_pos: jnp.ndarray, target_
     #print(f"Final residue contacts shape: {residue_contacts.shape}")  # [target_len, binder_len]
 
     return residue_contacts
+
+
+def calculate_contacts(
+    target_pos: jnp.ndarray,
+    binder_pos: jnp.ndarray,
+    target_mask: jnp.ndarray,
+    binder_mask: jnp.ndarray,
+    cutoff: float = 5.5,
+    use_jax_class: bool = False,
+    target_residue_numbers: Optional[jnp.ndarray] = None,
+    binder_residue_numbers: Optional[jnp.ndarray] = None
+) -> jnp.ndarray:
+    """Unified contact calculation interface."""
+    if use_jax_class:
+        if target_residue_numbers is None or binder_residue_numbers is None:
+            raise ValueError("residue_numbers required when use_jax_class=True")
+        return calculate_contacts_jax(
+            target_pos, binder_pos, target_mask, binder_mask,
+            target_residue_numbers, binder_residue_numbers, cutoff
+        )
+    else:
+        return calculate_contacts_af(
+            target_pos, binder_pos, target_mask, binder_mask, cutoff
+        )
+
 
 def analyse_contacts(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq: jnp.ndarray) -> Dict[str, float]:
     # Get indices for charged and polar residues
@@ -295,7 +365,6 @@ def analyse_contacts(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq:
         "CP": jnp.sum(cp)
     }
 
-
 def analyse_nis_soft(sasa_values: jnp.ndarray, aa_probs: jnp.ndarray, threshold: float = 0.05) -> Tuple[float, float, float]:
     charged_idx, polar_idx, aliphatic_idx = get_residue_character_indices("protorp")
     
@@ -349,19 +418,43 @@ def IC_NIS(ic_cc: float, ic_ca: float, ic_pp: float, ic_pa: float, p_nis_a: floa
     
     return dg
 
-def calculate_relative_sasa(complex_sasa: jnp.ndarray, total_seq: jnp.ndarray) -> jnp.ndarray:
+def calculate_relative_sasa(
+    complex_sasa: jnp.ndarray,  # [n_atoms] or [n_res, 37] depending on format
+    total_seq: jnp.ndarray,     # [n_res, n_restypes] one-hot or probability vectors
+    use_jax_class: bool = False,
+    residue_numbers: Optional[jnp.ndarray] = None,  # [n_atoms] residue numbers for JAX format
+    residue_index: Optional[jnp.ndarray] = None     # [n_res] sequential indices for mapping
+) -> jnp.ndarray:
     """Calculate relative SASA using ResidueClassification.
-    Args:
-        complex_sasa: SASA values for each atom, needs to be reshaped to res
-        total_seq: [n_res, n_restypes] one-hot or probability vectors
-    """
-    # reshape to 
-    atoms_per_res = 37
-    n_residues = len(total_seq)
-    residue_sasa = complex_sasa.reshape(n_residues, atoms_per_res).sum(axis=1)
     
-    # For each residue position, calculate expected reference SASA
-    # based on amino acid probabilities
+    Args:
+        complex_sasa: SASA values for each atom
+        total_seq: [n_res, n_restypes] one-hot or probability vectors
+        use_jax_class: Whether using JAX protein format
+        residue_numbers: PDB residue numbers for each atom
+        residue_index: Sequential residue indices matching total_seq order
+    """
+    if use_jax_class:
+        if residue_numbers is None or residue_index is None:
+            raise ValueError("residue_numbers and residue_index required when use_jax_class=True")
+            
+        # Create mapping from PDB residue numbers to sequential indices
+        n_residues = len(residue_index)
+        
+        # Create one-hot encoding mapping atoms to sequential indices
+        # First map residue_numbers to positions in residue_index
+        residue_positions = jnp.searchsorted(residue_index, residue_numbers)
+        res_one_hot = (jnp.arange(n_residues)[None, :] == residue_positions[:, None])  # [n_atoms, n_res]
+        
+        # Sum SASA values for each residue using matrix multiplication
+        residue_sasa = jnp.matmul(complex_sasa, res_one_hot)  # [n_res]
+        
+    else:
+        # AlphaFold format with 37 atoms per residue
+        atoms_per_res = 37
+        residue_sasa = complex_sasa.reshape(-1, atoms_per_res).sum(axis=1)
+    
+    # Calculate expected reference SASA based on amino acid probabilities
     complex_ref = jnp.matmul(total_seq, REFERENCE_RELATIVE_SASA_ARRAY)  # [n_res]
     
     # Calculate relative SASA
@@ -396,36 +489,48 @@ def run(
     """Run the full PRODIGY analysis pipeline."""
     if use_jax_class:
         target, binder = load_pdb_to_jax(pdb_path, target_chain, binder_chain)
+        complex_positions = jnp.concatenate([target.atom_positions, binder.atom_positions], axis=0)
+        complex_radii = jnp.concatenate([target.atom_radii, binder.atom_radii], axis=0)
+        complex_mask = jnp.concatenate([target.atom_mask, binder.atom_mask], axis=0)
+        complex_residue_numbers = jnp.concatenate([target.residue_numbers, binder.residue_numbers])
+        complex_residue_index = jnp.concatenate([target.residue_index, binder.residue_index])
     else:
         target, binder = load_pdb_to_af(pdb_path, target_chain, binder_chain)
-        
-    # Convert sequences to one-hot this needs to be fixed
+        complex_positions = jnp.concatenate([target.atom_positions, binder.atom_positions], axis=0).reshape(-1, 3)
+        complex_radii = jnp.concatenate([get_atom_radii(target.aatype), get_atom_radii(binder.aatype)])
+        complex_mask = jnp.concatenate([target.atom_mask, binder.atom_mask], axis=0).reshape(-1)
+
+    print("Convert sequences to one-hot")
     num_classes = len(residue_constants.restypes)
     target_seq = jax.nn.one_hot(target.aatype, num_classes=num_classes)
     binder_seq = jax.nn.one_hot(binder.aatype, num_classes=num_classes)
     total_seq = jnp.concatenate([target_seq, binder_seq])
 
-    # Calculate and analyze contacts
-    contacts = calculate_contacts(target.atom_positions, binder.atom_positions, target.atom_mask, binder.atom_mask, cutoff)
+    print("Calculate and analyze contacts")
+    contacts = calculate_contacts(
+        target.atom_positions, 
+        binder.atom_positions,
+        target.atom_mask,
+        binder.atom_mask,
+        cutoff=cutoff,
+        use_jax_class=use_jax_class,
+        target_residue_numbers=target.residue_numbers if use_jax_class else None,
+        binder_residue_numbers=binder.residue_numbers if use_jax_class else None
+    )
+    
     contact_types = analyse_contacts(contacts, target_seq, binder_seq)
     
-    # Calculate SASA
-    if use_jax_class:
-        complex_positions = jnp.concatenate([target.atom_positions, binder.atom_positions], axis=0)
-        complex_radii = jnp.concatenate([target.atom_radii, binder.atom_radii], axis=0)
-        complex_mask = jnp.concatenate([target.atom_mask, binder.atom_mask], axis=0)
-        complex_sasa = calculate_sasa(coords=complex_positions, vdw_radii=complex_radii, mask=complex_mask)
-    else:
-        complex_positions = jnp.concatenate([target.atom_positions, binder.atom_positions], axis=0).reshape(-1, 3)
-        complex_radii = jnp.concatenate([get_atom_radii(target.aatype), get_atom_radii(binder.aatype)])
-        complex_mask = jnp.concatenate([target.atom_mask, binder.atom_mask], axis=0).reshape(-1)
-        complex_sasa = calculate_sasa(coords=complex_positions, vdw_radii=complex_radii, mask=complex_mask) #.reshape(-1, 3)
+    print("Calculate SASA and relative SASA")
+    complex_sasa = calculate_sasa(coords=complex_positions, vdw_radii=complex_radii, mask=complex_mask)
+    relative_sasa = calculate_relative_sasa(complex_sasa, total_seq, use_jax_class=use_jax_class,
+        residue_numbers=complex_residue_numbers if use_jax_class else None,
+        residue_index=complex_residue_index if use_jax_class else None
+    )
 
-    # Calculate relative SASA and NIS
-    relative_sasa = calculate_relative_sasa(complex_sasa, total_seq)
+    print("Calculate NIS")
     nis_a, nis_c, nis_p = analyse_nis_soft(relative_sasa, total_seq, acc_threshold)
 
-    # Calculate binding affinity and convert to kd
+    print("Calculate binding affinity and convert to kd")
     dg = IC_NIS(
         contact_types["CC"],
         contact_types["AC"],
@@ -435,14 +540,15 @@ def run(
         nis_c
     )
     kd = dg_to_kd(dg, temperature=25.0)
+
     return ProdigyResults(
-            contact_types=ContactAnalysis(**contact_types),
-            binding_affinity=dg,
-            dissociation_constant=kd,
-            nis_aliphatic=nis_a,
-            nis_charged=nis_c,
-            nis_polar=nis_p,
-        )
+        contact_types=ContactAnalysis(**contact_types),
+        binding_affinity=dg,
+        dissociation_constant=kd,
+        nis_aliphatic=nis_a,
+        nis_charged=nis_c,
+        nis_polar=nis_p,
+    )
     return {
             "CC": float(contact_types["CC"].item()),
             "AC": float(contact_types["AC"].item()),
