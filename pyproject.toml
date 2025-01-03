@@ -13,7 +13,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 
 [project.scripts]
-run-prodigy = "bio_lib.run_prodigy_jax:main"
+run-prodigy-jax = "bio_lib.run_prodigy_jax:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["bio_lib"]

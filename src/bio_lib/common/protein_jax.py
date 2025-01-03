@@ -1,6 +1,7 @@
 import bio_lib.common.residue_constants as residue_constants
 from bio_lib.common.residue_library import default_library as residue_library
 import numpy as np
+from pathlib import Path
 import dataclasses
 from typing import Optional
 import jax.numpy as jnp
@@ -232,9 +233,10 @@ class JaxProtein:
             )
         ])
 
-    def process_pdb(self, pdb_path: str, selected_chains: Optional[list[str]] = None) -> JAXStructureData:
+    def process_pdb(self, pdb_path: str | Path, selected_chains: Optional[list[str]] = None) -> JAXStructureData:
         """Process a PDB file into JAXStructureData format. """
         # Parse PDB file
+        pdb_path = str(pdb_path)
         s_ext = pdb_path.split(".")[-1]
         if s_ext not in {"pdb", "ent", "cif"}:
             raise IOError(f"Structure format '{s_ext}' is not supported. Use '.pdb' or '.cif'")

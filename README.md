@@ -5,49 +5,55 @@ A Python library for analyzing protein interactions, calculating Solvent Accessi
 ## Installation
 
 ```bash
-!python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ bio_lib==0.4.0
+python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ bio_lib==0.5.0
 ```
 
 ## Core Features
+- **Input Processing in JAX**: Support for both AlphaFold2 and custom JAX structure processing.
+  - **Residue Classification**: Amino acid categorization (charged, polar, aliphatic) etc.
+- **Binding Affinity Prediction in JAX**: ΔG and Kd estimation using interface contacts and surface properties, customized [PRODIGY](https://github.com/haddocking/prodigy)
+  - **SASA Calculation**: JAX-based implementation of Shrake-Rupley algorithm for solvent-accessible surface area calculation
+  - **Contact Analysis**: Distance-based residue-residue contact determination within protein complexes
 
-- **SASA Calculation**: JAX-based implementation of Shrake-Rupley algorithm for solvent-accessible surface area calculation
-- **Contact Analysis**: Distance-based residue-residue contact determination within protein complexes
-- **Binding Affinity Prediction**: ΔG and Kd estimation using interface contacts and surface properties, customized [PRODIGY](https://github.com/haddocking/prodigy)
-- **Residue Classification**: Amino acid categorization (charged, polar, aliphatic) etc.
+## Benchmarking
 
-## Benchmark Results
+The `run_prodigy_jax.py` module supports benchmarking protein complex analysis across multiple structures:
 
-![Benchmark Analysis](benchmark/analysis_plots2.png)
-
-
-## Usage
+```python
+# Process single structure
 from bio_lib import run_prodigy_jax
-```
 results = run_prodigy_jax.run("complex.pdb", "A", "B")
 print(results)
+
+# Process directory of structures with timing
+results = run_prodigy_jax.process_structures(
+    "path/to/pdbs/",
+    target_chain="A",
+    binder_chain="B",
+    use_jax_class=True  # Toggle between JAX/AlphaFold2 processing
+)
 ```
+
+### Benchmark Results
+
+![Benchmark Analysis](benchmark_af/analysis_plots2.png)
+
+![Benchmark Analysis](benchmark_jax/analysis_plots.png)
+
+## Usage
+
 ### Command Line Interface
 
 ```bash
-python run_prodigy_jax.py structure.pdb A B \
-  --cutoff 5.5 \
-  --acc_threshold 0.05 \
-  --output-dir ./results \
-  --format json
-```
-
-#### Or
-```
 run-prodigy-jax complex.pdb A B --format human --format json
 ```
 
 #### CLI Arguments
 ```
-- `pdb_path`: Path to PDB file
-- `target_chain`: Target protein chain ID
-- `binder_chain`: Binder protein chain ID
-- `--cutoff`: Contact distance cutoff (Å, default: 5.5)
-- `--acc_threshold`: SASA threshold (default: 0.05)
-- `--output-dir`: Output directory (default: ./results)
-- `--format`: Output format [json|human|both] (default: both)
-```
+- pdb_path: Path to PDB file
+- target_chain: Target protein chain ID
+- binder_chain: Binder protein chain ID
+- --cutoff: Contact distance cutoff (Å, default: 5.5)
+- --acc_threshold: SASA threshold (default: 0.05)
+- --output-dir: Output directory (default: ./results)
+- --format: Output format [json|human|both] (default: both)

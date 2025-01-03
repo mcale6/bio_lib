@@ -188,7 +188,7 @@ def load_pdb_to_jax(pdb_path: str, target_chain: str, binder_chain: str) -> Tupl
     
     return target, binder
 
-def get_atom_radii(aatype: jnp.ndarray) -> jnp.ndarray:
+def get_atom_radii(aatype: jnp.ndarray) -> jnp.ndarray: ### check this
     seq_one_hot = jax.nn.one_hot(aatype, len(residue_constants.restypes))
     return jnp.matmul(seq_one_hot, RESIDUE_RADII_MATRIX).reshape(-1)
 
@@ -389,46 +389,37 @@ def run(
     pdb_path: str | Path,
     target_chain: str,
     binder_chain: str,
+    use_jax_class: bool = True,
     cutoff: float = 5.5,
     acc_threshold: float = 0.05,
 ) -> ProdigyResults:
-#)-> Dict[str, float]:
     """Run the full PRODIGY analysis pipeline."""
-    # Get coordinates and masks
-    target, binder = load_pdb_to_af(pdb_path, target_chain, binder_chain)
-    
-    # Convert sequences to one-hot
+    if use_jax_class:
+        target, binder = load_pdb_to_jax(pdb_path, target_chain, binder_chain)
+    else:
+        target, binder = load_pdb_to_af(pdb_path, target_chain, binder_chain)
+        
+    # Convert sequences to one-hot this needs to be fixed
     num_classes = len(residue_constants.restypes)
     target_seq = jax.nn.one_hot(target.aatype, num_classes=num_classes)
     binder_seq = jax.nn.one_hot(binder.aatype, num_classes=num_classes)
     total_seq = jnp.concatenate([target_seq, binder_seq])
 
     # Calculate and analyze contacts
-    contacts = calculate_contacts(
-        target.atom_positions,
-        binder.atom_positions,
-        target.atom_mask,
-        binder.atom_mask,
-        cutoff
-    )
+    contacts = calculate_contacts(target.atom_positions, binder.atom_positions, target.atom_mask, binder.atom_mask, cutoff)
     contact_types = analyse_contacts(contacts, target_seq, binder_seq)
     
     # Calculate SASA
-    complex_positions = jnp.concatenate([target.atom_positions, binder.atom_positions], axis=0)
-    complex_radii = jnp.concatenate([
-        get_atom_radii(target.aatype),
-        get_atom_radii(binder.aatype)
-    ])
-    complex_mask = jnp.concatenate([
-        target.atom_mask,
-        binder.atom_mask
-    ], axis=0).reshape(-1)
-    
-    complex_sasa = calculate_sasa(
-        coords=complex_positions.reshape(-1, 3),
-        vdw_radii=complex_radii,
-        mask=complex_mask,
-    )
+    if use_jax_class:
+        complex_positions = jnp.concatenate([target.atom_positions, binder.atom_positions], axis=0)
+        complex_radii = jnp.concatenate([target.atom_radii, binder.atom_radii], axis=0)
+        complex_mask = jnp.concatenate([target.atom_mask, binder.atom_mask], axis=0)
+        complex_sasa = calculate_sasa(coords=complex_positions, vdw_radii=complex_radii, mask=complex_mask)
+    else:
+        complex_positions = jnp.concatenate([target.atom_positions, binder.atom_positions], axis=0).reshape(-1, 3)
+        complex_radii = jnp.concatenate([get_atom_radii(target.aatype), get_atom_radii(binder.aatype)])
+        complex_mask = jnp.concatenate([target.atom_mask, binder.atom_mask], axis=0).reshape(-1)
+        complex_sasa = calculate_sasa(coords=complex_positions, vdw_radii=complex_radii, mask=complex_mask) #.reshape(-1, 3)
 
     # Calculate relative SASA and NIS
     relative_sasa = calculate_relative_sasa(complex_sasa, total_seq)

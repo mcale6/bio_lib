@@ -5,6 +5,7 @@ from bio_lib.common.residue_library import default_library as residue_library
 from bio_lib.common.residue_classification import ResidueClassification, ResidueCharacter
 from bio_lib.custom_prodigy_jax import run as run_prodigy
 from bio_lib.shrake_rupley_jax import calculate_sasa
+from bio_lib.helpers import tqdm
 import pkg_resources
 from .version import __version__
 
@@ -16,6 +17,7 @@ def get_data_path(filename: str) -> str:
 __all__ = [
     'Protein',
     'JaxProtein',
+    "tqdm",
     'residue_library',
     'run_prodigy',
     'calculate_sasa',
