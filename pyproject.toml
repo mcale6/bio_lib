@@ -8,9 +8,19 @@ dynamic = ["version"]
 description = "A library for biological computations with JAX support"
 requires-python = ">=3.7"
 authors = [{ name = "mcale6" }]
-dependencies = ["biopython", "numpy", "jax", "jaxlib"]
+dependencies = [
+    "biopython",
+    "numpy",
+    "freesasa",
+    "prodigy-prot",
+    "dm-tree"
+]
 readme = "README.md"
 license = { file = "LICENSE" }
+
+[project.optional-dependencies]
+apple = ["jax-metal"]
+other = ["jax", "jaxlib"]
 
 [project.scripts]
 run-prodigy-jax = "bio_lib.run_prodigy_jax:main"
