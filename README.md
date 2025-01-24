@@ -5,7 +5,7 @@ A Python library for analyzing protein interactions, calculating Solvent Accessi
 ## Installation
 
 ```bash
-python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ bio_lib==0.6.2
+python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ bio_lib==0.7.2
 ```
 
 ## Core Features

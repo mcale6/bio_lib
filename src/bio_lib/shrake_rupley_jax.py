@@ -3,15 +3,8 @@ from jax import jit
 import numpy as np
 import pkg_resources
 
-# care, memory might be an issue, switch too 1000 points, also computation times increases a lot with more points
-def _load_sphere_points() -> np.ndarray:
-    """Load sphere points from package data."""
-    sphere_path = pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') 
-    return np.loadtxt(sphere_path, skiprows=1)
-
 # Create constant
-SPHERE_POINTS = jnp.array(_load_sphere_points())
-
+SPHERE_POINTS = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') , skiprows=1))
 
 # Each point comparison involved N=16,428 × 16,428 ≈ 270 million pairs
 # If we assume ~100 neighbors per atom, it's only 16,428 × 100 ≈ 1.6 million pairs

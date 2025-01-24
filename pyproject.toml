@@ -9,9 +9,10 @@ description = "A library for biological computations with JAX support"
 requires-python = ">=3.7"
 authors = [{ name = "mcale6" }]
 dependencies = [
+    "numpy>=1.22.4,<2.0.0",
+    "jax",
+    "jaxlib",
     "biopython",
-    "numpy",
-    "freesasa",
     "prodigy-prot",
     "dm-tree"
 ]
@@ -20,7 +21,6 @@ license = { file = "LICENSE" }
 
 [project.optional-dependencies]
 apple = ["jax-metal"]
-other = ["jax", "jaxlib"]
 
 [project.scripts]
 run-prodigy-jax = "bio_lib.run_prodigy_jax:main"

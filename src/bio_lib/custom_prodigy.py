@@ -6,8 +6,6 @@ import pkg_resources
 from bio_lib.common.residue_classification import ResidueClassification, ResidueCharacter
 from bio_lib.common.residue_library import default_library as residue_library
 
-from freesasa import Classifier, calc, structureFromBioPDB
-
 from prodigy_prot.predict_IC import *
 from prodigy_prot.modules.freesasa_tools import *
 from prodigy_prot.modules.models import *
@@ -30,6 +28,7 @@ def execute_freesasa_api2(structure):
         rsa_data: Dictionary containing relative SASA values per residue.
         abs_diff_data: Dictionary containing absolute SASA differences per residue.
     """
+    from freesasa import Classifier, calc, structureFromBioPDB
 
     asa_data, rsa_data, abs_diff_data = {}, {}, {}
     _rsa = REL_SASA
