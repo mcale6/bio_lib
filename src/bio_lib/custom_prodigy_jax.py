@@ -1,7 +1,7 @@
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, Any
 from pathlib import Path
+import os, json
 from dataclasses import dataclass
-import numpy as np
 import jax.numpy as jnp
 import jax
 import bio_lib.common.residue_constants as residue_constants
@@ -79,52 +79,50 @@ class ContactAnalysis:
     
 @dataclass
 class ProdigyResults:
-    """Container for all PRODIGY analysis results."""
     contact_types: ContactAnalysis
-    binding_affinity: float  # ΔG in kcal/mol
-    dissociation_constant: float  # Kd
-    nis_aliphatic: float  # % non-interacting surface that is aliphatic
-    nis_charged: float  # % non-interacting surface that is charged
-    nis_polar: float  # % non-interacting surface that is polar
+    binding_affinity: float  
+    dissociation_constant: float
+    nis_aliphatic: float
+    nis_charged: float  
+    nis_polar: float
+    sasa_data: Optional[Dict[Tuple[str,str,int,str], float]] = None
+    relative_sasa: Optional[Dict[Tuple[str,str,int], float]] = None
 
-    def __post_init__(self):
-        """Convert all values to float."""
-        for field_name, value in self.__dict__.items():
-            if field_name != 'contact_types':
-                setattr(self, field_name, float(value))
+    def save_results(self, output_dir: str) -> None:
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Save binding results
+        binding_path = os.path.join(output_dir, "binding_results.json") 
+        with open(binding_path, 'w') as f:
+            json.dump(self.to_dict(), f, indent=2)
 
-    @property
-    def total_nis(self) -> float:
-        """Total percentage of non-interacting surface."""
-        return self.nis_aliphatic + self.nis_charged + self.nis_polar
+        # Save SASA data
+        if self.sasa_data:
+            sasa_path = os.path.join(output_dir, "sasa_data.csv")
+            with open(sasa_path, 'w') as f:
+                f.write("chain,resname,resid,atom,sasa,relative_sasa\n")
+                for (chain,resname,resid,atom), sasa in self.sasa_data.items():
+                    rel_sasa = self.relative_sasa.get((chain,resname,resid), 0.0) if self.relative_sasa else 0.0
+                    f.write(f"{chain},{resname},{resid},{atom},{sasa:.3f},{rel_sasa:.3f}\n")
 
-    def get_binding_category(self) -> str:
-        """Categorize binding affinity strength."""
-        if self.binding_affinity < -12:
-            return "Very Strong"
-        elif self.binding_affinity < -9:
-            return "Strong"
-        elif self.binding_affinity < -6:
-            return "Moderate"
-        else:
-            return "Weak"
+    def print_prediction(self) -> None:
+        print("y")
 
-    def to_dict(self) -> Dict[str, float]:
-        """Convert results to a flat dictionary."""
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert results to a dictionary including all data."""
         return {
             'DG': self.binding_affinity,
             'ba_val': self.binding_affinity,
-            'CC': self.contact_types.CC,
-            'CP': self.contact_types.CP,
-            'AC': self.contact_types.AC,
-            'PP': self.contact_types.PP,
-            'AP': self.contact_types.AP,
-            'AA': self.contact_types.AA,
-            'nis_p': self.nis_polar,
-            'nis_a': self.nis_aliphatic,
-            'nis_c': self.nis_charged
+            'kd': self.dissociation_constant,
+            'contacts': self.contact_types.to_dict(),
+            'contact_percentages': self.contact_types.get_percentages(),
+            'nis': {
+                'aliphatic': self.nis_aliphatic,
+                'charged': self.nis_charged, 
+                'polar': self.nis_polar
+            }
         }
-
+    
     def __str__(self) -> str:
         """Human-readable string representation."""
         return (
@@ -132,7 +130,6 @@ class ProdigyResults:
             f"PRODIGY Analysis Results\n"
             f"------------------------\n"
             f"Binding Energy (ΔG): {self.binding_affinity:.2f} kcal/mol\n"
-            f"Binding Category: {self.get_binding_category()}\n"
             f"Dissociation Constant (Kd): {self.dissociation_constant:.2e} M\n"
             f"------------------------\n"
             f"\nContact Analysis:\n"
@@ -357,12 +354,12 @@ def analyse_contacts(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq:
     )
 
     return {
-        "CC": jnp.sum(cc),
-        "PP": jnp.sum(pp),
-        "AA": jnp.sum(aa),
-        "AC": jnp.sum(ac),
-        "AP": jnp.sum(ap),
-        "CP": jnp.sum(cp)
+        "CC": float(jnp.sum(cc)),
+        "PP": float(jnp.sum(pp)),
+        "AA": float(jnp.sum(aa)),
+        "AC": float(jnp.sum(ac)),
+        "AP": float(jnp.sum(ap)),
+        "CP": float(jnp.sum(cp))
     }
 
 def analyse_nis_soft(sasa_values: jnp.ndarray, aa_probs: jnp.ndarray, threshold: float = 0.05) -> Tuple[float, float, float]:
@@ -382,11 +379,7 @@ def analyse_nis_soft(sasa_values: jnp.ndarray, aa_probs: jnp.ndarray, threshold:
     #assert (n_aliph + n_charged + n_polar) == n_total
     
     total = n_total + 1e-8
-    return (
-        100.0 * n_aliph / total,
-        100.0 * n_charged / total,
-        100.0 * n_polar / total
-    )
+    return (float(100.0 * n_aliph / total), float(100.0 * n_charged / total), float(100.0 * n_polar / total))
 
 def IC_NIS(ic_cc: float, ic_ca: float, ic_pp: float, ic_pa: float, p_nis_a: float, p_nis_c: float) -> float:
     """Calculate binding affinity (ΔG) using interface composition and NIS.
@@ -416,7 +409,7 @@ def IC_NIS(ic_cc: float, ic_ca: float, ic_pp: float, ic_pa: float, p_nis_a: floa
            0.13810 * (p_nis_c) +
           -15.9433)
     
-    return dg
+    return float(dg)
 
 def calculate_relative_sasa(
     complex_sasa: jnp.ndarray,  # [n_atoms] or [n_res, 37] depending on format
@@ -476,15 +469,107 @@ def dg_to_kd(dg: float, temperature: float = 25.0) -> float:
     # Calculate Kd with numerical stability
     kd = jnp.exp(dg / rt)
     
-    return kd
+    return float(kd)
 
-def run(
+
+def convert_sasa_to_dict(
+    complex_sasa: jnp.ndarray,
+    target: Any,
+    binder: Any,
+    use_jax_class: bool = False
+) -> Dict[Tuple[str, str, int, str], float]:
+    """Convert SASA array to dictionary mapping (chain, resname, resid, atom) to SASA value."""
+    sasa_dict = {}
+    
+    if use_jax_class:
+        # Process target chain
+        target_sasa = complex_sasa[:len(target.atom_positions)]
+        for i, (sasa, mask) in enumerate(zip(target_sasa, target.atom_mask)):
+            if mask > 0:  # Only include atoms that exist
+                resname = residue_constants.restype_3to1[target.sequence[target.atom_to_residue_index[i]]]
+                resid = int(target.residue_numbers[target.atom_to_residue_index[i]])
+                atom_name = target.atom_names[i]
+                sasa_dict[("A", resname, resid, atom_name)] = float(sasa)
+                
+        # Process binder chain
+        binder_sasa = complex_sasa[len(target.atom_positions):]
+        for i, (sasa, mask) in enumerate(zip(binder_sasa, binder.atom_mask)):
+            if mask > 0:
+                resname = residue_constants.restype_3to1[binder.sequence[binder.atom_to_residue_index[i]]]
+                resid = int(binder.residue_numbers[binder.atom_to_residue_index[i]])
+                atom_name = binder.atom_names[i]
+                sasa_dict[("B", resname, resid, atom_name)] = float(sasa)
+    
+    else:
+        # For AlphaFold format (37 atoms per residue)
+        atoms_per_res = 37
+        target_len = target.atom_positions.shape[0]
+        binder_len = binder.atom_positions.shape[0]
+        
+        # Process target chain
+        target_sasa = complex_sasa[:target_len * atoms_per_res].reshape(target_len, atoms_per_res)
+        for i in range(target_len):
+            resname = residue_constants.restype_1to3[residue_constants.restypes[target.aatype[i]]]
+            for j, (sasa, mask) in enumerate(zip(target_sasa[i], target.atom_mask[i])):
+                if mask > 0:
+                    atom_name = residue_constants.atom_types[j]
+                    sasa_dict[("A", resname, i + 1, atom_name)] = float(sasa)
+        
+        # Process binder chain
+        binder_sasa = complex_sasa[target_len * atoms_per_res:].reshape(binder_len, atoms_per_res)
+        for i in range(binder_len):
+            resname = residue_constants.restype_1to3[residue_constants.restypes[binder.aatype[i]]]
+            for j, (sasa, mask) in enumerate(zip(binder_sasa[i], binder.atom_mask[i])):
+                if mask > 0:
+                    atom_name = residue_constants.atom_types[j]
+                    sasa_dict[("B", resname, i + 1, atom_name)] = float(sasa)
+    
+    return sasa_dict
+
+def convert_relative_sasa_to_dict(
+    relative_sasa: jnp.ndarray,
+    target: Any,
+    binder: Any,
+    use_jax_class: bool = False
+) -> Dict[Tuple[str, str, int], float]:
+    """Convert relative SASA array to dictionary mapping (chain, resname, resid) to relative SASA value."""
+    rel_sasa_dict = {}
+    target_len = len(target.aatype)
+    
+    # Process target chain
+    target_rel_sasa = relative_sasa[:target_len]
+    for i, sasa in enumerate(target_rel_sasa):
+        if use_jax_class:
+            resname = residue_constants.restype_3to1[target.sequence[i]]
+            resid = int(target.residue_numbers[i])
+        else:
+            resname = residue_constants.restype_1to3[residue_constants.restypes[target.aatype[i]]]
+            resid = i + 1
+        rel_sasa_dict[("A", resname, resid)] = float(sasa)
+    
+    # Process binder chain
+    binder_rel_sasa = relative_sasa[target_len:]
+    for i, sasa in enumerate(binder_rel_sasa):
+        if use_jax_class:
+            resname = residue_constants.restype_3to1[binder.sequence[i]]
+            resid = int(binder.residue_numbers[i])
+        else:
+            resname = residue_constants.restype_1to3[residue_constants.restypes[binder.aatype[i]]]
+            resid = i + 1
+        rel_sasa_dict[("B", resname, resid)] = float(sasa)
+    
+    return rel_sasa_dict
+
+def predict_binding_affinity_jax(
     pdb_path: str | Path,
-    target_chain: str,
-    binder_chain: str,
-    use_jax_class: bool = True,
+    target_chain: str = "A",
+    binder_chain: str = "B",
+    use_jax_class: bool = False,
     cutoff: float = 5.5,
     acc_threshold: float = 0.05,
+    temperature: float = 25.0,
+    output_dir: Optional[str] = ".",
+    quiet: bool = True,
 ) -> ProdigyResults:
     """Run the full PRODIGY analysis pipeline."""
     if use_jax_class:
@@ -522,11 +607,12 @@ def run(
     
     print("Calculate SASA and relative SASA")
     complex_sasa = calculate_sasa(coords=complex_positions, vdw_radii=complex_radii, mask=complex_mask)
+    sasa_dict = convert_sasa_to_dict(complex_sasa, target, binder, use_jax_class)
     relative_sasa = calculate_relative_sasa(complex_sasa, total_seq, use_jax_class=use_jax_class,
         residue_numbers=complex_residue_numbers if use_jax_class else None,
         residue_index=complex_residue_index if use_jax_class else None
     )
-
+    rsa_dict = convert_relative_sasa_to_dict(relative_sasa, target, binder, use_jax_class)
     print("Calculate NIS")
     nis_a, nis_c, nis_p = analyse_nis_soft(relative_sasa, total_seq, acc_threshold)
 
@@ -539,24 +625,23 @@ def run(
         nis_a,
         nis_c
     )
-    kd = dg_to_kd(dg, temperature=25.0)
+    kd = dg_to_kd(dg, temperature=temperature)
 
-    return ProdigyResults(
+    results = ProdigyResults(
         contact_types=ContactAnalysis(**contact_types),
         binding_affinity=dg,
         dissociation_constant=kd,
         nis_aliphatic=nis_a,
         nis_charged=nis_c,
         nis_polar=nis_p,
+        sasa_data=sasa_dict,
+        relative_sasa=rsa_dict
     )
-    return {
-            "CC": float(contact_types["CC"].item()),
-            "AC": float(contact_types["AC"].item()),
-            "PP":float(contact_types["PP"].item()),
-            "AP":float(contact_types["AP"].item()),
-            "ba_val":float(dg.item()),
-            "DG":float(kd.item()),
-            "nis_a":float(nis_a.item()),
-            "nis_c":float(nis_c.item()),
-            "nis_p":float(nis_p.item())
-        }
+
+    if output_dir:
+        results.save_results(output_dir)
+    
+    if quiet == False:
+        print(results)
+    
+    return results

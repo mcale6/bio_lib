@@ -1,15 +1,15 @@
 # Bio-Lib
 
-A Python library for analyzing protein interactions, calculating Solvent Accessible Surface Area (SASA), predicting binding affinity (prodigy), and identifying residue contacts in JAX. 
+A Python library for analyzing protein interactions, calculating Solvent Accessible Surface Area (SASA), predicting binding affinity (prodigy), and identifying residue contacts in JAX.
 
 ## Installation
 
 ```bash
-python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ bio_lib==0.7.2
+python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ bio_lib==0.9.2
 ```
 
 ## Core Features
-- **Input Processing in JAX**: Support for both AlphaFold2 and custom JAX structure processing.
+- **Input Processing in JAX**: Support for both AlphaFold2 (works) and custom JAX structure processing (in progress).
   - **Residue Classification**: Amino acid categorization (charged, polar, aliphatic) etc.
 - **Binding Affinity Prediction in JAX**: ΔG and Kd estimation using interface contacts and surface properties, customized [PRODIGY](https://github.com/haddocking/prodigy)
   - **SASA Calculation**: JAX-based implementation of Shrake-Rupley algorithm for solvent-accessible surface area calculation
