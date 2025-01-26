@@ -18,7 +18,7 @@ python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-u
 ## Comparison with Original Prodigy Results
 
 ```bash
-run-prodigy-jax PRODIGYdataset/ # folder with pdb files, two chain names have to be all the same (A & B)
+run-prodigy-custom PRODIGYdataset/ --use-jax # otherwise default is cpu version
 ```
 
 | **Metric**                     | **Pearson r** | **RMSE**  |

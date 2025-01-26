@@ -6,9 +6,9 @@ from datetime import datetime
 import time
 import statistics
 from typing import List, Dict
-from src.bio_lib.custom_prodigy import predict_binding_affinity
-from src.bio_lib.custom_prodigy_jax import predict_binding_affinity_jax
-from src.bio_lib.helpers.utils import collect_pdb_files, format_time
+from bio_lib.custom_prodigy import predict_binding_affinity
+from bio_lib.custom_prodigy_jax import predict_binding_affinity_jax
+from bio_lib.helpers.utils import collect_pdb_files, format_time
 
 def run(
     input_path: Path,
@@ -108,7 +108,7 @@ def main() -> int:
     parser.add_argument("input_path", type=Path, help="Path to PDB file or directory")
     parser.add_argument("--selection", type=str, default=None, 
                        help="Chain selection (e.g., 'A,B' for JAX mode, or custom selection for standard mode)")
-    parser.add_argument("--use-jax", action="store_true", help="Use JAX-based implementation")
+    parser.add_argument("--use-jax", action="store_true", default=False, help="Use JAX-based implementation")
     parser.add_argument("--temperature", type=float, default=25.0, help="Temperature in Celsius (default: 25.0)")
     parser.add_argument("--distance-cutoff", type=float, default=5.5, help="Distance cutoff (Å) (default: 5.5)")
     parser.add_argument("--acc-threshold", type=float, default=0.05, help="Accessibility threshold (default: 0.05)")
@@ -138,3 +138,6 @@ def main() -> int:
     except Exception as e:
         print(f"Error: {str(e)}", file=sys.stderr)
         return 1
+
+if __name__ == "__main__":
+    sys.exit(main())

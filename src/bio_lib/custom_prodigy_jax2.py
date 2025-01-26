@@ -344,7 +344,6 @@ def IC_NIS(ic_cc: float, ic_ca: float, ic_pp: float, ic_pa: float, p_nis_a: floa
 def calculate_relative_sasa(
     complex_sasa: jnp.ndarray,  # [n_atoms] or [n_res, 37] depending on format
     total_seq: jnp.ndarray,     # [n_res, n_restypes] one-hot or probability vectors
-    use_jax_class: bool = False,
     residue_numbers: Optional[jnp.ndarray] = None,  # [n_atoms] residue numbers for JAX format
     residue_index: Optional[jnp.ndarray] = None     # [n_res] sequential indices for mapping
 ) -> jnp.ndarray:
@@ -357,26 +356,21 @@ def calculate_relative_sasa(
         residue_numbers: PDB residue numbers for each atom
         residue_index: Sequential residue indices matching total_seq order
     """
-    if use_jax_class:
-        if residue_numbers is None or residue_index is None:
-            raise ValueError("residue_numbers and residue_index required when use_jax_class=True")
-            
-        # Create mapping from PDB residue numbers to sequential indices
-        n_residues = len(residue_index)
+    if residue_numbers is None or residue_index is None:
+        raise ValueError("residue_numbers and residue_index required")
         
-        # Create one-hot encoding mapping atoms to sequential indices
-        # First map residue_numbers to positions in residue_index
-        residue_positions = jnp.searchsorted(residue_index, residue_numbers)
-        res_one_hot = (jnp.arange(n_residues)[None, :] == residue_positions[:, None])  # [n_atoms, n_res]
-        
-        # Sum SASA values for each residue using matrix multiplication
-        residue_sasa = jnp.matmul(complex_sasa, res_one_hot)  # [n_res]
-        
-    else:
-        # AlphaFold format with 37 atoms per residue
-        atoms_per_res = 37
-        residue_sasa = complex_sasa.reshape(-1, atoms_per_res).sum(axis=1)
+    # Create mapping from PDB residue numbers to sequential indices
+    n_residues = len(residue_index)
     
+    # Create one-hot encoding mapping atoms to sequential indices
+    # First map residue_numbers to positions in residue_index
+    residue_positions = jnp.searchsorted(residue_index, residue_numbers)
+    res_one_hot = (jnp.arange(n_residues)[None, :] == residue_positions[:, None])  # [n_atoms, n_res]
+    
+    # Sum SASA values for each residue using matrix multiplication
+    residue_sasa = jnp.matmul(complex_sasa, res_one_hot)  # [n_res]
+        
+
     # Calculate expected reference SASA based on amino acid probabilities
     complex_ref = jnp.matmul(total_seq, REFERENCE_RELATIVE_SASA_ARRAY)  # [n_res]
     
