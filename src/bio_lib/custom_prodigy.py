@@ -9,7 +9,6 @@ from prodigy_prot.predict_IC import Prodigy, analyse_contacts, calculate_ic, ana
 from prodigy_prot.modules.models import IC_NIS
 from prodigy_prot.modules.parsers import parse_structure
 
-
 # Create a dictionary comprehension that reorganizes the data
 REL_SASA = {res: asa.total for res, asa in ResidueClassification().rel_asa.items()}
 NACCESS_CONFIG_PATH = pkg_resources.resource_filename('bio_lib', 'data/naccess.config')

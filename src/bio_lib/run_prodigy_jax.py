@@ -7,14 +7,7 @@ from datetime import datetime
 import time
 import statistics
 from typing import List, Dict
-from .custom_prodigy_jax import run
-
-def setup_output_path(pdb_path: Path, output_dir: Path) -> Path:
-    """Setup output directory and generate output filename."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_name = pdb_path.stem
-    return output_dir / f"{base_name}_results_{timestamp}.json"
+from .custom_prodigy_jax import predict_binding_affinity_jax
 
 def collect_pdb_files(input_path: Path) -> List[Path]:
     """Collect all PDB files from input path."""
@@ -40,7 +33,17 @@ def format_time(seconds: float) -> str:
         seconds = seconds % 60
         return f"{minutes}m {seconds:.2f}s"
 
-def process_structures(
+def setup_output_path(pdb_path: Path, output_dir: Path) -> Path:
+    """Setup output directory and generate unique output filename."""
+    # Create a subdirectory with current timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_subdir = output_dir / timestamp
+    output_subdir.mkdir(parents=True, exist_ok=True)
+    
+    base_name = pdb_path.stem
+    return output_subdir / f"{base_name}_results.json"
+
+def run(
     input_path: Path,
     output_dir: Path,
     target_chain: str = "A",
@@ -55,25 +58,28 @@ def process_structures(
     all_results = {}
     execution_times = []
     
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = output_dir / timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+    
     print(f"\nProcessing {len(pdb_files)} PDB file(s)...")
     
     for pdb_file in pdb_files:
         try:
-            # Time the entire run
             start_time = time.perf_counter()
-            results = run(
-                pdb_file,
-                target_chain,
-                binder_chain,
-                use_jax_class,
+            results = predict_binding_affinity_jax(
+                pdb_path=pdb_file,
+                target_chain=target_chain,
+                binder_chain=binder_chain,
+                use_jax_class=use_jax_class,
+                cutoff=cutoff,
                 acc_threshold=acc_threshold,
-                cutoff=cutoff
+                output_dir=str(run_dir / pdb_file.stem),  # Save SASA in subdirectory
+                quiet=True if output_format == "json" else False
             )
-            end_time = time.perf_counter()
-            execution_time = end_time - start_time
+            execution_time = time.perf_counter() - start_time
             execution_times.append(execution_time)
             
-            # Add results with timing
             json_data = results.to_dict()
             json_data['execution_time'] = {
                 'seconds': execution_time,
@@ -81,9 +87,9 @@ def process_structures(
             }
             all_results[pdb_file.stem] = json_data
             
-            # Save individual results
             if output_format in ["json", "both"]:
-                output_path = setup_output_path(pdb_file, output_dir)
+                # Save main results
+                output_path = run_dir / f"{pdb_file.stem}_results.json"
                 output_path.write_text(json.dumps(json_data, indent=2))
             
             if output_format in ["human", "both"]:
@@ -98,7 +104,6 @@ def process_structures(
                 "execution_time": {"error": "Failed to complete processing"}
             }
     
-    # Calculate and add timing statistics
     if execution_times:
         timing_stats = {
             'mean': statistics.mean(execution_times),
@@ -117,10 +122,9 @@ def process_structures(
         
         all_results['_timing_summary'] = timing_stats
     
-    # Save combined results
-    combined_output = output_dir / f"combined_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    combined_output = run_dir / "combined_results.json"
     combined_output.write_text(json.dumps(all_results, indent=2))
-    print(f"\nCombined results saved to: {combined_output}")
+    print(f"\nResults saved in: {run_dir}")
     
     return all_results
 
@@ -129,9 +133,10 @@ def main() -> int:
     parser.add_argument("input_path", type=Path, help="Path to PDB file or directory")
     parser.add_argument("target_chain", type=str, default="A", nargs="?", help="Target chain ID (default: A)")
     parser.add_argument("binder_chain", type=str, default="B", nargs="?", help="Binder chain ID (default: B)")
-    parser.add_argument("--use-jax-class", type=bool, default=True, help="Use Custom Jax Class (default: True)")
+    parser.add_argument("--use-jax-class", action="store_true", default=False, help="Use Custom Jax Class (default: True)")
     parser.add_argument("--cutoff", type=float, default=5.5, help="Distance cutoff (Å) (default: 5.5)")
     parser.add_argument("--acc-threshold", type=float, default=0.05, help="Accessibility threshold (default: 0.05)")
+    parser.add_argument("--temperature", type=float, default=25.0, help="Temperature in Celsius (default: 25.0)")
     parser.add_argument("--output-dir", type=Path, default=Path("results"), help="Output directory")
     parser.add_argument("--format", choices=["json", "human", "both"], default="both", help="Output format")
     args = parser.parse_args()
@@ -139,17 +144,17 @@ def main() -> int:
     if not args.input_path.exists():
         print(f"Error: Input path not found: {args.input_path}", file=sys.stderr)
         return 1
-    
+        
     try:
-        process_structures(
-            args.input_path,
-            args.output_dir,
-            args.target_chain,
-            args.binder_chain,
-            args.use_jax_class,
-            args.acc_threshold,
-            args.cutoff,
-            args.format
+        run(
+            input_path=args.input_path,
+            output_dir=args.output_dir,
+            target_chain=args.target_chain,
+            binder_chain=args.binder_chain,
+            use_jax_class=args.use_jax_class,
+            acc_threshold=args.acc_threshold,
+            cutoff=args.cutoff,
+            output_format=args.format
         )
         return 0
     except Exception as e:

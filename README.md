@@ -17,7 +17,10 @@ python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-u
 
 ## Benchmarking
 
-The `run_prodigy_jax.py` module supports benchmarking protein complex analysis across multiple structures:
+```bash
+run-prodigy-jax complex.pdb A B --format human --format json
+run-prodigy-jax PRODIGYdataset/ # folder with pdb files, two chain names have to be all the same (A & B)
+```
 
 ```python
 # Process single structure
@@ -30,15 +33,26 @@ results = run_prodigy_jax.process_structures(
     "path/to/pdbs/",
     target_chain="A",
     binder_chain="B",
-    use_jax_class=True  # Toggle between JAX/AlphaFold2 processing
+    use_jax_class=False  # Toggle between JAX/AlphaFold2 processing, AlphaFold2 is tested, JAX vesio nin progress
 )
 ```
 
 ### Benchmark Results
 
-![Benchmark Analysis](benchmark_af/analysis_plots2.png)
+| **Metric**                     | **Pearson r** | **p-value**       | **RMSE**   |
+|---------------------------------|---------------|--------------------|------------|
+| Binding Affinity               | 0.999808      | 1.605573e-131      | 0.040133   |
+| Charged-Charged contacts       | 1.000000      | 0.000000e+00       | 0.000000   |
+| Charged-Polar contacts         | 1.000000      | 0.000000e+00       | 0.000000   |
+| Aliphatic-Charged contacts     | 1.000000      | 0.000000e+00       | 0.000000   |
+| Polar-Polar contacts           | 1.000000      | 0.000000e+00       | 0.000000   |
+| Aliphatic-Polar contacts       | 1.000000      | 0.000000e+00       | 0.000000   |
+| Aliphatic-Aliphatic contacts   | 1.000000      | 0.000000e+00       | 0.000000   |
+| NIS Polar                      | 0.999700      | 3.383779e-124      | 0.166575   |
+| NIS Aliphatic                  | 0.998786      | 3.949009e-101      | 0.206809   |
+| NIS Charged                    | 0.999774      | 7.695594e-129      | 0.139352   |
 
-![Benchmark Analysis](benchmark_jax/analysis_plots.png)
+![Benchmark Analysis](benchmark_jax/corr_plots_org_vs_jax.png)
 
 ## Usage
 
@@ -46,14 +60,5 @@ results = run_prodigy_jax.process_structures(
 
 ```bash
 run-prodigy-jax complex.pdb A B --format human --format json
+run-prodigy-jax PRODIGYdataset/ # folder with pdb files, two chain names have to be all the same (A & B)
 ```
-
-#### CLI Arguments
-```
-- pdb_path: Path to PDB file
-- target_chain: Target protein chain ID
-- binder_chain: Binder protein chain ID
-- --cutoff: Contact distance cutoff (Å, default: 5.5)
-- --acc_threshold: SASA threshold (default: 0.05)
-- --output-dir: Output directory (default: ./results)
-- --format: Output format [json|human|both] (default: both)

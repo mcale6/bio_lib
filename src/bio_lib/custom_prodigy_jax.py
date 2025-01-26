@@ -111,7 +111,6 @@ class ProdigyResults:
     def to_dict(self) -> Dict[str, Any]:
         """Convert results to a dictionary including all data."""
         return {
-            'DG': self.binding_affinity,
             'ba_val': self.binding_affinity,
             'kd': self.dissociation_constant,
             'contacts': self.contact_types.to_dict(),
