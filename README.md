@@ -39,18 +39,18 @@ results = run_prodigy_jax.process_structures(
 
 ### Benchmark Results
 
-| **Metric**                     | **Pearson r** | **p-value**       | **RMSE**   |
-|---------------------------------|---------------|--------------------|------------|
-| Binding Affinity               | 0.999808      | 1.605573e-131      | 0.040133   |
-| Charged-Charged contacts       | 1.000000      | 0.000000e+00       | 0.000000   |
-| Charged-Polar contacts         | 1.000000      | 0.000000e+00       | 0.000000   |
-| Aliphatic-Charged contacts     | 1.000000      | 0.000000e+00       | 0.000000   |
-| Polar-Polar contacts           | 1.000000      | 0.000000e+00       | 0.000000   |
-| Aliphatic-Polar contacts       | 1.000000      | 0.000000e+00       | 0.000000   |
-| Aliphatic-Aliphatic contacts   | 1.000000      | 0.000000e+00       | 0.000000   |
-| NIS Polar                      | 0.999700      | 3.383779e-124      | 0.166575   |
-| NIS Aliphatic                  | 0.998786      | 3.949009e-101      | 0.206809   |
-| NIS Charged                    | 0.999774      | 7.695594e-129      | 0.139352   |
+| **Metric**                     | **Pearson r** | **RMSE**  |
+|---------------------------------|---------------|-----------|
+| Binding Affinity               | 1.000         | 0.040     |
+| Charged-Charged contacts       | 1.000         | 0.000     |
+| Charged-Polar contacts         | 1.000         | 0.000     |
+| Aliphatic-Charged contacts     | 1.000         | 0.000     |
+| Polar-Polar contacts           | 1.000         | 0.000     |
+| Aliphatic-Polar contacts       | 1.000         | 0.000     |
+| Aliphatic-Aliphatic contacts   | 1.000         | 0.000     |
+| NIS Polar                      | 1.000         | 0.167     |
+| NIS Aliphatic                  | 0.999         | 0.207     |
+| NIS Charged                    | 1.000         | 0.139     |
 
 ![Benchmark Analysis](benchmark_af/corr_plots_org_vs_jax.png)
 
