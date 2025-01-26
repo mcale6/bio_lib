@@ -11,33 +11,15 @@ python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-u
 ## Core Features
 - **Input Processing in JAX**: Support for both AlphaFold2 (works) and custom JAX structure processing (in progress).
   - **Residue Classification**: Amino acid categorization (charged, polar, aliphatic) etc.
-- **Binding Affinity Prediction in JAX**: ΔG and Kd estimation using interface contacts and surface properties, customized [PRODIGY](https://github.com/haddocking/prodigy)
+- **Binding Affinity Prediction in JAX**: ΔG and Kd estimation using interface contacts and surface properties, customized [PRODIGY](https://github.com/haddocking/prodigy):
   - **SASA Calculation**: JAX-based implementation of Shrake-Rupley algorithm for solvent-accessible surface area calculation (Tested on L4 GPU <1000 sequence length)
   - **Contact Analysis**: Distance-based residue-residue contact determination within protein complexes
 
 ## Comparison with Original Prodigy Results
 
 ```bash
-run-prodigy-jax complex.pdb A B --format human --format json
 run-prodigy-jax PRODIGYdataset/ # folder with pdb files, two chain names have to be all the same (A & B)
 ```
-
-```python
-# Process single structure
-from bio_lib import run_prodigy_jax
-results = run_prodigy_jax.run("complex.pdb", "A", "B")
-print(results)
-
-# Process directory of structures with timing
-results = run_prodigy_jax.process_structures(
-    "path/to/pdbs/",
-    target_chain="A",
-    binder_chain="B",
-    use_jax_class=False  # Toggle between JAX/AlphaFold2 processing, AlphaFold2 is tested, JAX vesion in progress
-)
-```
-
-### Benchmark Results
 
 | **Metric**                     | **Pearson r** | **RMSE**  |
 |---------------------------------|---------------|-----------|
@@ -57,3 +39,22 @@ results = run_prodigy_jax.process_structures(
 ### Tested on a L4 GPU in Colab
 
 ![Benchmark Analysis](benchmark_af/ex_time_vs_seq_len.png)
+
+## Usage Example
+
+```python
+# Process single structure
+from bio_lib import run_prodigy_jax
+results = run_prodigy_jax.run("complex.pdb", "A", "B")
+print(results)
+
+# Process directory of structures with timing
+results = run_prodigy_jax.run(
+  "path/to/pdbs/",
+  target_chain="A",
+  binder_chain="B",
+  use_jax_class=False  # Toggle between JAX/AlphaFold2 processing
+)
+```
+
+For more detailed examples, check out [test.ipynb](test.ipynb).
