@@ -12,10 +12,10 @@ python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-u
 - **Input Processing in JAX**: Support for both AlphaFold2 (works) and custom JAX structure processing (in progress).
   - **Residue Classification**: Amino acid categorization (charged, polar, aliphatic) etc.
 - **Binding Affinity Prediction in JAX**: ΔG and Kd estimation using interface contacts and surface properties, customized [PRODIGY](https://github.com/haddocking/prodigy)
-  - **SASA Calculation**: JAX-based implementation of Shrake-Rupley algorithm for solvent-accessible surface area calculation
+  - **SASA Calculation**: JAX-based implementation of Shrake-Rupley algorithm for solvent-accessible surface area calculation (Tested on L4 GPU <1000 sequence length)
   - **Contact Analysis**: Distance-based residue-residue contact determination within protein complexes
 
-## Benchmarking
+## Comparison with Original Prodigy Results
 
 ```bash
 run-prodigy-jax complex.pdb A B --format human --format json
@@ -33,7 +33,7 @@ results = run_prodigy_jax.process_structures(
     "path/to/pdbs/",
     target_chain="A",
     binder_chain="B",
-    use_jax_class=False  # Toggle between JAX/AlphaFold2 processing, AlphaFold2 is tested, JAX vesio nin progress
+    use_jax_class=False  # Toggle between JAX/AlphaFold2 processing, AlphaFold2 is tested, JAX vesion in progress
 )
 ```
 
@@ -54,11 +54,6 @@ results = run_prodigy_jax.process_structures(
 
 ![Benchmark Analysis](benchmark_af/corr_plots_org_vs_jax.png)
 
-## Usage
+### Tested on a L4 GPU in Colab
 
-### Command Line Interface
-
-```bash
-run-prodigy-jax complex.pdb A B --format human --format json
-run-prodigy-jax PRODIGYdataset/ # folder with pdb files, two chain names have to be all the same (A & B)
-```
+![Benchmark Analysis](benchmark_af/ex_time_vs_seq_len.png)
