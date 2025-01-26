@@ -5,7 +5,7 @@ A Python library for analyzing protein interactions, calculating Solvent Accessi
 ## Installation
 
 ```bash
-python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ bio_lib==0.9.2
+python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ bio_lib==0.9.4
 ```
 
 ## Core Features
@@ -52,7 +52,7 @@ results = run_prodigy_jax.process_structures(
 | NIS Aliphatic                  | 0.998786      | 3.949009e-101      | 0.206809   |
 | NIS Charged                    | 0.999774      | 7.695594e-129      | 0.139352   |
 
-![Benchmark Analysis](benchmark_jax/corr_plots_org_vs_jax.png)
+![Benchmark Analysis](benchmark_af/corr_plots_org_vs_jax.png)
 
 ## Usage
 
