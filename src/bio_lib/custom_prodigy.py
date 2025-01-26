@@ -10,7 +10,7 @@ from prodigy_prot.modules.parsers import parse_structure
 
 # Create a dictionary comprehension that reorganizes the data
 REL_SASA = {res: asa.total for res, asa in ResidueClassification().rel_asa.items()}
-NACCESS_CONFIG_PATH = pkg_resources.resource_filename('bio_lib', 'data/naccess.config')
+NACCESS_CONFIG_PATH = pkg_resources.resource_filename('bio_lib,data/naccess.config')
 
 def execute_freesasa_api2(structure):
     """Compute SASA using freesasa and return absolute and relative SASA differences."""
@@ -65,11 +65,11 @@ class CustomProdigy(Prodigy):
         struct_path = self.structure.id  # Get structure ID/path
         
         # Generate filenames
-        res_fname_json = os.path.basename(struct_path + "_ba_results.json")
-        res_fname_csv = os.path.basename(struct_path + "_sasa_atom_results.csv")
+        res_fname_json = os.path.basename(struct_path + "_binding_results.json")
+        res_fname_csv = os.path.basename(struct_path + "_sasa_data.csv")
 
         # Format CSV data
-        asa_csv_lines = "\n".join(["Chain,ResName,ResID,Atom,SASA,RelativeSASA"] + 
+        asa_csv_lines = "\n".join(["chain,resname,resid,atom,sasa,relative_sasa"] + 
             [f"{chain},{resname},{resid.strip()},{atom.strip()},{sasa:.3f},{self.rsa_data.get((chain,resname,resid), 0.0):.3f}" 
              for (chain, resname, resid, atom), sasa in self.asa_data.items()])
 

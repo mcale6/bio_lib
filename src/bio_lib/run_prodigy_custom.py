@@ -31,11 +31,14 @@ def run(
     run_dir.mkdir(parents=True, exist_ok=True)
     
     # Parse selection into target and binder chains if using JAX
-    if use_jax and selection:
-        chains = selection.split(',')
-        if len(chains) != 2:
-            raise ValueError("JAX mode requires exactly two chains (e.g., 'A,B')")
-        target_chain, binder_chain = chains
+    if use_jax:
+        if not selection:
+            target_chain, binder_chain = "A", "B"
+        else:
+            chains = selection.split(',')
+            if len(chains) != 2:
+                raise ValueError("JAX mode requires exactly two chains (e.g., 'A,B')")
+            target_chain, binder_chain = chains
     
     for pdb_file in pdb_files:
         try:

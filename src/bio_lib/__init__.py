@@ -6,8 +6,10 @@ from bio_lib.common.residue_classification import ResidueClassification, Residue
 from bio_lib.shrake_rupley_jax import calculate_sasa
 from bio_lib.helpers import tqdm
 from bio_lib.helpers import utils
-from bio_lib.custom_prodigy_jax import predict_binding_affinity_jax
-from bio_lib.custom_prodigy import predict_binding_affinity
+#from bio_lib.custom_prodigy_jax import predict_binding_affinity_jax
+#from bio_lib.custom_prodigy import predict_binding_affinity
+from bio_lib.custom_prodigy_jax import *
+from bio_lib.custom_prodigy import *
 import pkg_resources
 from .version import __version__
 
