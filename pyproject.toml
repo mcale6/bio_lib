@@ -23,7 +23,7 @@ license = { file = "LICENSE" }
 apple = ["jax-metal"]
 
 [project.scripts]
-run-prodigy-jax = "bio_lib.run_prodigy_jax:main"
+run-prodigy-custom = "run_prodigy_custom:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["bio_lib"]

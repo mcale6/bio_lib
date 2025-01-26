@@ -1,6 +1,5 @@
 import json
 import os
-import argparse
 import numpy as np
 import pkg_resources
 from bio_lib.common.residue_classification import ResidueClassification
@@ -151,72 +150,3 @@ def predict_binding_affinity(
         prodigy.save_results(output_dir)
     
     return prodigy.as_dict()
-
-def main():
-    parser = argparse.ArgumentParser(description="Predict binding affinity using the PRODIGY method.")
-    
-    parser.add_argument(
-        "struct_path", 
-        type=str, 
-        help="Path to the input structure file."
-    )
-    parser.add_argument(
-        "--selection", 
-        type=str, 
-        default=None, 
-        help="Selection of atoms or residues (optional)."
-    )
-    parser.add_argument(
-        "--temperature", 
-        type=float, 
-        default=25.0, 
-        help="Temperature in Celsius for Kd prediction (default: 25.0)."
-    )
-    parser.add_argument(
-        "--distance_cutoff", 
-        type=float, 
-        default=5.5, 
-        help="Distance cutoff for interface contacts (default: 5.5 Å)."
-    )
-    parser.add_argument(
-        "--acc_threshold", 
-        type=float, 
-        default=0.05, 
-        help="Accessibility threshold from rel. SASA (default: 0.05)."
-    )
-    parser.add_argument(
-        "--save_results",
-        action="store_true",
-        help="Save the prediction results to a file."
-    )
-    parser.add_argument(
-        "--output_dir",
-        type=str,
-        default=".",
-        help="Directory to save the results (optional)."
-    )
-    parser.add_argument(
-        "--quiet",
-        action="store_true",
-        help="Outputs only the predicted affinity value",
-    )
-    args = parser.parse_args()
-
-    # Call the prediction function
-    result = predict_binding_affinity(
-        struct_path=args.struct_path,
-        selection=args.selection,
-        temperature=args.temperature,
-        distance_cutoff=args.distance_cutoff,
-        acc_threshold=args.acc_threshold,
-        save_results=args.save_results,
-        output_dir=args.output_dir,
-        quiet=args.quiet
-    )
-
-    # Optionally print or save results
-    print("Binding affinity prediction completed.")
-    print(result)  # Customize based on the `CustomProdigy` output format.
-
-if __name__ == "__main__":
-    main()
