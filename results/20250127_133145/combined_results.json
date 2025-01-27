@@ -1,8 +1,0 @@
-{
-  "2MTA": {
-    "error": "'list' object has no attribute 'split'",
-    "execution_time": {
-      "error": "Failed"
-    }
-  }
-}

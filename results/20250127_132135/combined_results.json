@@ -1,8 +1,0 @@
-{
-  "2MTA": {
-    "error": "Selections must be disjoint sets:  is repeated",
-    "execution_time": {
-      "error": "Failed"
-    }
-  }
-}
