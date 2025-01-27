@@ -71,12 +71,12 @@ class ContactAnalysis:
     def to_dict(self) -> Dict[str, float]:
         """Convert to dictionary with basic contact counts."""
         return {
-            'CC': float(self.values[0]),
-            'PP': float(self.values[1]), 
-            'AA': float(self.values[2]),
-            'AC': float(self.values[3]),
-            'AP': float(self.values[4]),
-            'CP': float(self.values[5])
+            'CC': float(jnp.asarray(self.values[0])),
+            'PP': float(jnp.asarray(self.values[1])), 
+            'AA': float(jnp.asarray(self.values[2])),
+            'AC': float(jnp.asarray(self.values[3])),
+            'AP': float(jnp.asarray(self.values[4])),
+            'CP': float(jnp.asarray(self.values[5]))
         }
 
 @dataclass
@@ -107,8 +107,6 @@ class ProdigyResults:
                     f.write(f"{row['chain']},{row['resname']},{row['resindex']},"
                            f"{row['atomname']},{row['atom_sasa']:.3f},{row['relative_sasa']:.3f}\n")
 
-    def print_prediction(self) -> None:
-        print("y")
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert results to a dictionary including all data."""
@@ -471,7 +469,7 @@ def predict_binding_affinity_jax(
 
     print("Convert SASA data to array")
     sasa_dict = convert_sasa_to_array(complex_sasa, relative_sasa, target, binder)
-    print("Save Results")
+
     results = ProdigyResults(
         contact_types=ContactAnalysis(contact_types),
         binding_affinity=dg,
@@ -482,7 +480,7 @@ def predict_binding_affinity_jax(
         structure_id=Path(pdb_path).stem,
         sasa_data=sasa_dict
     )
-
+    print("Save Results")
     if output_dir:
         results.save_results(output_dir)
     
