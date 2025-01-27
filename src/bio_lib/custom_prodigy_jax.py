@@ -19,6 +19,21 @@ CHARACTER_MATRIX_PROTORP = jnp.zeros((len(residue_constants.restypes), 3))
 CHARACTER_MATRIX_PROTORP = CHARACTER_MATRIX_PROTORP.at[charged_idx_protorp, 0].set(1.0)
 CHARACTER_MATRIX_PROTORP = CHARACTER_MATRIX_PROTORP.at[polar_idx_protorp, 1].set(1.0)
 CHARACTER_MATRIX_PROTORP = CHARACTER_MATRIX_PROTORP.at[aliphatic_idx_protorp, 2].set(1.0)
+charged_idx_ic, polar_idx_ic, aliphatic_idx_ic = get_residue_character_indices("ic")
+CHARACTER_MATRIX_IC = jnp.zeros((len(residue_constants.restypes), 3))
+CHARACTER_MATRIX_IC = CHARACTER_MATRIX_IC.at[charged_idx_ic, 0].set(1.0)
+CHARACTER_MATRIX_IC = CHARACTER_MATRIX_IC.at[polar_idx_ic, 1].set(1.0)
+CHARACTER_MATRIX_IC = CHARACTER_MATRIX_IC.at[aliphatic_idx_ic, 2].set(1.0)
+# Each cell [i][j] represents the interaction type between: Target character i (rows: 0=Charged, 1=Polar, 2=Aliphatic) Binder character j (columns: same as rows)
+INTERACTION_TYPES = jnp.array([
+    # Binder→ | Charged(0)     Polar(1)      Aliphatic(2)
+    [0,        5,             3],  # Target=Charged(0)
+    [5,        1,             4],  # Target=Polar(1)
+    [3,        4,             2]   # Target=Aliphatic(2)
+])
+#[0][0] → 0 (CC)
+#[1][1] → 1 (PP)
+#[2][2] → 2 (AA)
 
 @dataclass
 class ContactAnalysis:
@@ -217,7 +232,7 @@ def calculate_contacts_af(
 
     return residue_contacts
 
-def analyse_contacts(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq: jnp.ndarray) -> jnp.ndarray:
+def analyse_contacts_af(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq: jnp.ndarray) -> jnp.ndarray:
     # Get indices for charged and polar residues
     charged_idx, polar_idx, aliphatic_idx = get_residue_character_indices("ic")
 
@@ -265,6 +280,51 @@ def analyse_contacts(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq:
     ))
 
     return jnp.array([cc, pp, aa, ac, ap, cp])
+
+
+def calculate_contacts(
+    target_pos: jnp.ndarray,
+    binder_pos: jnp.ndarray,
+    target_mask: jnp.ndarray,
+    binder_mask: jnp.ndarray,
+    cutoff: float = 5.5
+) -> jnp.ndarray:
+    """contact calculation block-wise operations."""
+    # Reshape to atom-level coordinates
+    target_atoms = target_pos.reshape(-1, 3)
+    binder_atoms = binder_pos.reshape(-1, 3)
+    
+    # Compute squared distances using optimized JAX operations
+    dist2 = jnp.sum((target_atoms[:, None] - binder_atoms[None, :]) ** 2, axis=-1)
+    
+    # Combine masks and distance criteria
+    atom_contacts = (dist2 <= (cutoff ** 2)) & (target_mask.reshape(-1)[:, None] > 0) & (binder_mask.reshape(-1)[None, :] > 0)
+    
+    # Reshape and reduce to residue contacts
+    return jnp.any(atom_contacts.reshape(
+        target_pos.shape[0], 37,
+        binder_pos.shape[0], 37
+    ), axis=(1, 3))
+
+def analyse_contacts(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq: jnp.ndarray) -> jnp.ndarray:
+    """contact analysis using matrix operations."""
+    # Convert sequences to character probabilities using precomputed matrix
+    target_probs = jnp.matmul(target_seq, CHARACTER_MATRIX_IC)  # [T, 3]
+    binder_probs = jnp.matmul(binder_seq, CHARACTER_MATRIX_IC)  # [B, 3]
+    
+    # Create interaction probability matrix using outer product
+    interaction_probs = jnp.einsum('ti,bj->tbij', target_probs, binder_probs)  # [T, B, 3, 3]
+    
+    # Calculate all interaction types in one go
+    interaction_grid = jnp.take(INTERACTION_TYPES, interaction_probs.astype(jnp.int32))
+    weighted_contacts = contacts[:, :, None, None] * interaction_probs
+    
+    # Sum contributions for each interaction type
+    return jnp.array([
+        jnp.sum(weighted_contacts * (interaction_grid == i)) 
+        for i in range(6)
+    ])
+
 
 def analyse_nis(sasa_values: jnp.ndarray, aa_probs: jnp.ndarray, threshold: float = 0.05) -> jnp.ndarray:
     """Calculate NIS percentages for n_aliph, n_charged, and n_polar residues."""
@@ -437,7 +497,7 @@ def predict_binding_affinity_jax(
     print("Calculate and analyze contacts")
     contacts = calculate_contacts_af(target.atom_positions, binder.atom_positions, 
                                      target.atom_mask,  binder.atom_mask, cutoff=cutoff)
-    contact_types = analyse_contacts(contacts, target_seq, binder_seq)
+    contact_types = analyse_contacts_af(contacts, target_seq, binder_seq)
     
     print("Calculate SASA and relative SASA")
     complex_sasa = calculate_sasa(coords=complex_positions, vdw_radii=complex_radii, mask=complex_mask)

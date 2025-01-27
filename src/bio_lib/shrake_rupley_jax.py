@@ -2,6 +2,7 @@ import jax.numpy as jnp
 from jax import jit
 import numpy as np
 import pkg_resources
+from jax import lax
 
 # Create constant
 SPHERE_POINTS = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') , skiprows=1))
@@ -53,3 +54,61 @@ def calculate_sasa(
     sasa = areas * (n_accessible / sphere_points.shape[0])
 
     return sasa
+
+def calculate_sasa_optimized(
+    coords: jnp.ndarray,
+    vdw_radii: jnp.ndarray,
+    mask: jnp.ndarray,
+    sphere_points: jnp.ndarray = SPHERE_POINTS,
+    probe_radius: float = 1.4,
+    max_neighbors: int = 200
+) -> jnp.ndarray:
+    """Optimized SASA calculation using neighbor lists and JAX loops."""
+    # ===== 1. Preprocessing =====
+    N = coords.shape[0]
+    M = sphere_points.shape[0]
+    
+    # Mask invalid atoms
+    masked_coords = coords * mask[:, None]
+    masked_radii = vdw_radii * mask
+    radii_with_probe = (masked_radii + probe_radius) * mask
+    
+    # Precompute squared radii with probe
+    radii_with_probe_sq = (radii_with_probe ** 2).astype(coords.dtype)
+    
+    # ===== 2. Compute Interaction Matrix (Neighbor List) =====
+    # Pairwise distances between all atoms
+    diff = masked_coords[:, None, :] - masked_coords[None, :, :]
+    dist2 = jnp.sum(diff ** 2, axis=-1)
+    
+    # Compute interaction cutoff matrix
+    radsum = radii_with_probe[:, None] + radii_with_probe[None, :]
+    interaction_mask = (dist2 <= (radsum ** 2)) & ~jnp.eye(N, dtype=bool)
+    
+    # ===== 3. Process Each Atom's Neighbors =====
+    def process_atom(i):
+        # Generate sphere points for atom i
+        atom_radius = radii_with_probe[i]
+        points = masked_coords[i] + sphere_points * atom_radius  # [M, 3]
+        
+        # Find neighbors for atom i
+        neighbors = jnp.where(interaction_mask[i], size=max_neighbors, fill_value=-1)[0]
+        
+        # Check burial for each point
+        def check_point(point):
+            # Compute distances to neighbors
+            neighbor_coords = masked_coords[neighbors]
+            neighbor_radii_sq = radii_with_probe_sq[neighbors]
+            
+            # Calculate distances and check burial
+            dist2_neighbors = jnp.sum((point - neighbor_coords) ** 2, axis=-1)
+            is_buried = jnp.any((dist2_neighbors <= neighbor_radii_sq) & (neighbors != -1))
+            return ~is_buried
+        
+        # Vectorize over sphere points
+        accessible = jnp.sum(lax.map(check_point, points))
+        return 4.0 * jnp.pi * (atom_radius ** 2) * (accessible / M)
+    
+    # Compute SASA for all atoms
+    sasa_values = lax.map(process_atom, jnp.arange(N))
+    return sasa_values * mask
