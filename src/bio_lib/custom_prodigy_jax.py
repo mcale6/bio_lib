@@ -4,79 +4,81 @@ import os, json
 from dataclasses import dataclass
 import jax.numpy as jnp
 import jax
+import numpy as np
 import bio_lib.common.residue_constants as residue_constants
 import bio_lib.common.protein as Protein
 from bio_lib.common.residue_classification import ResidueClassification, ResidueCharacter
 from bio_lib.common.residue_library import default_library as residue_library
 from bio_lib.common.protein_jax import JAXStructureData, JaxProtein
-from .shrake_rupley_jax import calculate_sasa
+from bio_lib.shrake_rupley_jax import calculate_sasa
 
 RESIDUE_RADII_MATRIX = jnp.array(residue_library.radii_matrix)
 REFERENCE_RELATIVE_SASA_ARRAY = jnp.array(ResidueClassification().ref_rel_sasa_array)
 
+
 @dataclass
 class ContactAnalysis:
-    """Results from analyzing interface contacts."""
-    CC: float  # charged-charged contacts
-    PP: float  # polar-polar contacts
-    AA: float  # aliphatic-aliphatic contacts
-    AC: float  # aliphatic-charged contacts
-    AP: float  # aliphatic-polar contacts
-    CP: float  # charged-polar contacts
+    """Results from analyzing interface contacts.
+    CC: charged-charged contacts
+    PP: polar-polar contacts
+    AA: aliphatic-aliphatic contacts
+    AC: aliphatic-charged contacts
+    AP: aliphatic-polar contacts
+    CP: charged-polar contacts
+    """
+    values: jnp.ndarray  # Array containing [CC, PP, AA, AC, AP, CP] values in this order!
 
     def __post_init__(self):
-        """Validate contact values."""
-        for field_name, value in self.__dict__.items():
-            if value < 0:
-                raise ValueError(f"Contact count {field_name} cannot be negative: {value}")
-            # Convert to float in case we get jax arrays
-            setattr(self, field_name, float(value))
+        """Convert input to float array if needed."""
+        self.values = jnp.asarray(self.values, dtype=float)
+        if self.values.shape != (6,):
+            raise ValueError("Contact values must be array of shape (6,)")
 
     @property
     def total_contacts(self) -> float:
         """Total number of interface contacts."""
-        return self.CC + self.PP + self.AA + self.AC + self.AP + self.CP
+        return float(jnp.sum(self.values))
 
-    @property
+    @property 
     def charged_contacts(self) -> float:
         """Total contacts involving charged residues."""
-        return self.CC + self.AC + self.CP
+        return float(self.values[0] + self.values[3] + self.values[5])
 
     @property
     def polar_contacts(self) -> float:
         """Total contacts involving polar residues."""
-        return self.PP + self.AP + self.CP
+        return float(self.values[1] + self.values[4] + self.values[5])
 
     @property
     def aliphatic_contacts(self) -> float:
         """Total contacts involving aliphatic residues."""
-        return self.AA + self.AC + self.AP
-    
+        return float(self.values[2] + self.values[3] + self.values[4])
+
     def get_percentages(self) -> Dict[str, float]:
         """Calculate percentage for each contact type."""
         total = self.total_contacts
         if total == 0:
             return {name: 0.0 for name in ['CC', 'PP', 'AA', 'AC', 'AP', 'CP']}
         return {
-            'CC': 100 * self.CC / total,
-            'PP': 100 * self.PP / total,
-            'AA': 100 * self.AA / total,
-            'AC': 100 * self.AC / total,
-            'AP': 100 * self.AP / total,
-            'CP': 100 * self.CP / total
+            'CC': 100 * self.values[0] / total,
+            'PP': 100 * self.values[1] / total,
+            'AA': 100 * self.values[2] / total,
+            'AC': 100 * self.values[3] / total,
+            'AP': 100 * self.values[4] / total,
+            'CP': 100 * self.values[5] / total
         }
 
     def to_dict(self) -> Dict[str, float]:
         """Convert to dictionary with basic contact counts."""
         return {
-            'CC': self.CC,
-            'PP': self.PP,
-            'AA': self.AA,
-            'AC': self.AC,
-            'AP': self.AP,
-            'CP': self.CP
+            'CC': float(self.values[0]),
+            'PP': float(self.values[1]), 
+            'AA': float(self.values[2]),
+            'AC': float(self.values[3]),
+            'AP': float(self.values[4]),
+            'CP': float(self.values[5])
         }
-    
+
 @dataclass
 class ProdigyResults:
     contact_types: ContactAnalysis
@@ -85,25 +87,25 @@ class ProdigyResults:
     nis_aliphatic: float
     nis_charged: float  
     nis_polar: float
-    sasa_data: Optional[Dict[Tuple[str,str,int,str], float]] = None
-    relative_sasa: Optional[Dict[Tuple[str,str,int], float]] = None
+    structure_id: str = "_"
+    sasa_data: np.ndarray = None
 
     def save_results(self, output_dir: str) -> None:
         os.makedirs(output_dir, exist_ok=True)
         
         # Save binding results
-        binding_path = os.path.join(output_dir, "binding_results.json") 
+        binding_path = os.path.join(output_dir, f"{self.structure_id}_binding_results.json") 
         with open(binding_path, 'w') as f:
-            json.dump(self.to_dict(), f, indent=2)
+            json.dump(self.contact_types.to_dict(), f, indent=2)
 
         # Save SASA data
-        if self.sasa_data:
-            sasa_path = os.path.join(output_dir, "sasa_data.csv")
+        if self.sasa_data is not None:
+            sasa_path = os.path.join(output_dir, f"{self.structure_id}_sasa_data.csv")
             with open(sasa_path, 'w') as f:
                 f.write("chain,resname,resid,atom,sasa,relative_sasa\n")
-                for (chain,resname,resid,atom), sasa in self.sasa_data.items():
-                    rel_sasa = self.relative_sasa.get((chain,resname,resid), 0.0) if self.relative_sasa else 0.0
-                    f.write(f"{chain},{resname},{resid},{atom},{sasa:.3f},{rel_sasa:.3f}\n")
+                for row in self.sasa_data:
+                    f.write(f"{row['chain']},{row['resname']},{row['resindex']},"
+                           f"{row['atomname']},{row['atom_sasa']:.3f},{row['relative_sasa']:.3f}\n")
 
     def print_prediction(self) -> None:
         print("y")
@@ -124,6 +126,7 @@ class ProdigyResults:
     
     def __str__(self) -> str:
         """Human-readable string representation."""
+        contact_types_dict = self.contact_types.to_dict()
         return (
             f"------------------------\n"
             f"PRODIGY Analysis Results\n"
@@ -132,12 +135,12 @@ class ProdigyResults:
             f"Dissociation Constant (Kd): {self.dissociation_constant:.2e} M\n"
             f"------------------------\n"
             f"\nContact Analysis:\n"
-            f"  Charged-Charged: {self.contact_types.CC:.1f}\n"
-            f"  Polar-Polar: {self.contact_types.PP:.1f}\n"
-            f"  Aliphatic-Aliphatic: {self.contact_types.AA:.1f}\n"
-            f"  Aliphatic-Charged: {self.contact_types.AC:.1f}\n"
-            f"  Aliphatic-Polar: {self.contact_types.AP:.1f}\n"
-            f"  Charged-Polar: {self.contact_types.CP:.1f}\n"
+            f"  Charged-Charged: {contact_types_dict['CC']:.1f}\n"
+            f"  Polar-Polar: {contact_types_dict['PP']:.1f}\n"
+            f"  Aliphatic-Aliphatic: {contact_types_dict['AA']:.1f}\n"
+            f"  Aliphatic-Charged: {contact_types_dict['AC']:.1f}\n"
+            f"  Aliphatic-Polar: {contact_types_dict['AP']:.1f}\n"
+            f"  Charged-Polar: {contact_types_dict['CP']:.1f}\n"
             f"------------------------\n"
             f"\nNon-Interacting Surface:\n"
             f"  Aliphatic: {self.nis_aliphatic:.1f}%\n"
@@ -234,8 +237,7 @@ def calculate_contacts_af(
 
     return residue_contacts
 
-
-def analyse_contacts(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq: jnp.ndarray) -> Dict[str, float]:
+def analyse_contacts(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq: jnp.ndarray) -> jnp.ndarray:
     # Get indices for charged and polar residues
     charged_idx, polar_idx, aliphatic_idx = get_residue_character_indices("ic")
 
@@ -263,39 +265,33 @@ def analyse_contacts(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq:
 
     # Calculate contact type probabilities
     # Each contact is weighted by probability of residue types
-    cc = contacts * target_class_prob[:, :, 2] * binder_class_prob[:, :, 2]  # charged-charged
-    pp = contacts * target_class_prob[:, :, 1] * binder_class_prob[:, :, 1]  # polar-polar
-    aa = contacts * target_class_prob[:, :, 0] * binder_class_prob[:, :, 0]  # aliph-aliph
+    cc = jnp.sum(contacts * target_class_prob[:, :, 2] * binder_class_prob[:, :, 2])  # charged-charged
+    pp = jnp.sum(contacts * target_class_prob[:, :, 1] * binder_class_prob[:, :, 1])  # polar-polar
+    aa = jnp.sum(contacts * target_class_prob[:, :, 0] * binder_class_prob[:, :, 0])  # aliph-aliph
 
-    ac = contacts * (
+    ac = jnp.sum(contacts * (
         (target_class_prob[:, :, 0] * binder_class_prob[:, :, 2]) +  # target-aliph & binder-charged
         (target_class_prob[:, :, 2] * binder_class_prob[:, :, 0])    # target-charged & binder-aliph
-    )
+    ))
 
-    ap = contacts * (
+    ap = jnp.sum(contacts * (
         (target_class_prob[:, :, 0] * binder_class_prob[:, :, 1]) +  # target-aliph & binder-polar
         (target_class_prob[:, :, 1] * binder_class_prob[:, :, 0])    # target-polar & binder-aliph
-    )
+    ))
 
-    cp = contacts * (
+    cp = jnp.sum(contacts * (
         (target_class_prob[:, :, 2] * binder_class_prob[:, :, 1]) +  # target-charged & binder-polar
         (target_class_prob[:, :, 1] * binder_class_prob[:, :, 2])    # target-polar & binder-charged
-    )
+    ))
 
-    return {
-        "CC": float(jnp.sum(cc)),
-        "PP": float(jnp.sum(pp)),
-        "AA": float(jnp.sum(aa)),
-        "AC": float(jnp.sum(ac)),
-        "AP": float(jnp.sum(ap)),
-        "CP": float(jnp.sum(cp))
-    }
+    return jnp.array([cc, pp, aa, ac, ap, cp])
 
-def analyse_nis_soft(sasa_values: jnp.ndarray, aa_probs: jnp.ndarray, threshold: float = 0.05) -> Tuple[float, float, float]:
+def analyse_nis(sasa_values: jnp.ndarray, aa_probs: jnp.ndarray, threshold: float = 0.05) -> jnp.ndarray:
+    """Calculate NIS percentages for n_aliph, n_charged, and n_polar residues."""
     charged_idx, polar_idx, aliphatic_idx = get_residue_character_indices("protorp")
     
     p_charged = jnp.sum(aa_probs[..., charged_idx], axis=-1)
-    p_polar = jnp.sum(aa_probs[..., polar_idx], axis=-1)
+    p_polar = jnp.sum(aa_probs[..., polar_idx], axis=-1) 
     p_aliph = jnp.sum(aa_probs[..., aliphatic_idx], axis=-1)
         
     nis_mask = (sasa_values >= threshold)
@@ -305,12 +301,14 @@ def analyse_nis_soft(sasa_values: jnp.ndarray, aa_probs: jnp.ndarray, threshold:
     n_polar = jnp.sum(nis_mask * p_polar)
     n_aliph = jnp.sum(nis_mask * p_aliph)
     
-    #assert (n_aliph + n_charged + n_polar) == n_total
-    
     total = n_total + 1e-8
-    return (float(100.0 * n_aliph / total), float(100.0 * n_charged / total), float(100.0 * n_polar / total))
+    return jnp.array([
+        100.0 * n_aliph / total,
+        100.0 * n_charged / total, 
+        100.0 * n_polar / total
+    ])
 
-def IC_NIS(ic_cc: float, ic_ca: float, ic_pp: float, ic_pa: float, p_nis_a: float, p_nis_c: float) -> float:
+def IC_NIS(ic_cc: jnp.ndarray, ic_ca: jnp.ndarray, ic_pp: jnp.ndarray, ic_pa: jnp.ndarray, p_nis_a: jnp.ndarray, p_nis_c: jnp.ndarray) -> jnp.ndarray:
     """Calculate binding affinity (ΔG) using interface composition and NIS.
 
     Args:
@@ -330,29 +328,19 @@ def IC_NIS(ic_cc: float, ic_ca: float, ic_pp: float, ic_pa: float, p_nis_a: floa
     p_nis_a = jnp.clip(p_nis_a, 0, 100)
     p_nis_c = jnp.clip(p_nis_c, 0, 100)
     
-    dg = (-0.09459 * ic_cc +
+    return (-0.09459 * ic_cc +
           -0.10007 * ic_ca +
            0.19577 * ic_pp +
           -0.22671 * ic_pa +
            0.18681 * (p_nis_a) +
            0.13810 * (p_nis_c) +
           -15.9433)
-    
-    return float(dg)
 
 def calculate_relative_sasa(
     complex_sasa: jnp.ndarray,  # [n_atoms] or [n_res, 37] depending on format
     total_seq: jnp.ndarray,     # [n_res, n_restypes] one-hot or probability vectors
 ) -> jnp.ndarray:
-    """Calculate relative SASA using ResidueClassification.
-    
-    Args:
-        complex_sasa: SASA values for each atom
-        total_seq: [n_res, n_restypes] one-hot or probability vectors
-        use_jax_class: Whether using JAX protein format
-        residue_numbers: PDB residue numbers for each atom
-        residue_index: Sequential residue indices matching total_seq order
-    """
+    """Calculate relative SASA using ResidueClassification."""
     # AlphaFold format with 37 atoms per residue
     atoms_per_res = 37
     residue_sasa = complex_sasa.reshape(-1, atoms_per_res).sum(axis=1)
@@ -363,7 +351,7 @@ def calculate_relative_sasa(
     # Calculate relative SASA
     return residue_sasa / (complex_ref + 1e-8)
 
-def dg_to_kd(dg: float, temperature: float = 25.0) -> float:
+def dg_to_kd(dg: jnp.ndarray, temperature: float = 25.0) -> jnp.ndarray:
     """Convert binding free energy to dissociation constant.
         - Uses the relationship: ΔG = RT ln(Kd)
         - R = 0.0019858775 kcal/(mol·K)
@@ -377,67 +365,70 @@ def dg_to_kd(dg: float, temperature: float = 25.0) -> float:
     rt = 0.0019858775 * (temperature + 273.15)  # R in kcal/(mol·K)
     
     # Calculate Kd with numerical stability
-    kd = jnp.exp(dg / rt)
-    
-    return float(kd)
+    return jnp.exp(dg / rt)
 
-
-def convert_sasa_to_dict(
+def convert_sasa_to_array(
     complex_sasa: jnp.ndarray,
-    target: Any,
-    binder: Any,
-) -> Dict[Tuple[str, str, int, str], float]:
-    """Convert SASA array to dictionary mapping (chain, resname, resid, atom) to SASA value."""
-    sasa_dict = {}
-    # For AlphaFold format (37 atoms per residue)
-    atoms_per_res = 37
-    target_len = target.atom_positions.shape[0]
-    binder_len = binder.atom_positions.shape[0]
-    
-    # Process target chain
-    target_sasa = complex_sasa[:target_len * atoms_per_res].reshape(target_len, atoms_per_res)
-    for i in range(target_len):
-        resname = residue_constants.restype_1to3[residue_constants.restypes[target.aatype[i]]]
-        for j, (sasa, mask) in enumerate(zip(target_sasa[i], target.atom_mask[i])):
-            if mask > 0:
-                atom_name = residue_constants.atom_types[j]
-                sasa_dict[("A", resname, i + 1, atom_name)] = float(sasa)
-    
-    # Process binder chain
-    binder_sasa = complex_sasa[target_len * atoms_per_res:].reshape(binder_len, atoms_per_res)
-    for i in range(binder_len):
-        resname = residue_constants.restype_1to3[residue_constants.restypes[binder.aatype[i]]]
-        for j, (sasa, mask) in enumerate(zip(binder_sasa[i], binder.atom_mask[i])):
-            if mask > 0:
-                atom_name = residue_constants.atom_types[j]
-                sasa_dict[("B", resname, i + 1, atom_name)] = float(sasa)
-    
-    return sasa_dict
-
-def convert_relative_sasa_to_dict(
     relative_sasa: jnp.ndarray,
-    target: Any,
-    binder: Any,
-) -> Dict[Tuple[str, str, int], float]:
-    """Convert relative SASA array to dictionary mapping (chain, resname, resid) to relative SASA value."""
-    rel_sasa_dict = {}
-    target_len = len(target.aatype)
+    target: Protein,
+    binder: Protein,
+) -> np.ndarray:
+    """Vectorized version that's ~100x faster for large structures."""
+    atoms_per_res = 37
+    atom_types = np.array(residue_constants.atom_types)
+    restypes = residue_constants.restypes + ['X']
+    restype_1to3 = residue_constants.restype_1to3
+
+    # Combine target and binder data
+    target_res = len(target.aatype)
+    binder_res = len(binder.aatype)
+    total_res = target_res + binder_res
+
+    # Reshape SASA data to [total_res, atoms_per_res]
+    sasa_matrix = complex_sasa.reshape(total_res, atoms_per_res)
+
+    # Create chain identifiers
+    chain_ids = np.concatenate([
+        np.full(target_res, 'A'),
+        np.full(binder_res, 'B')
+    ])
+
+    # Create residue indices (1-based)
+    res_indices = np.concatenate([target.residue_index, binder.residue_index]).astype(int)
+
+    # Create residue names
+    target_resnames = np.array([restype_1to3[restypes[aa]] for aa in target.aatype])
+    binder_resnames = np.array([restype_1to3[restypes[aa]] for aa in binder.aatype])
+    resnames = np.concatenate([target_resnames, binder_resnames])
+
+    # Create atom name grid
+    atom_names = np.tile(atom_types, total_res)
     
-    # Process target chain
-    target_rel_sasa = relative_sasa[:target_len]
-    for i, sasa in enumerate(target_rel_sasa):
-        resname = residue_constants.restype_1to3[residue_constants.restypes[target.aatype[i]]]
-        resid = i + 1
-        rel_sasa_dict[("A", resname, resid)] = float(sasa)
+    # Create full index grids
+    res_idx_grid = np.repeat(np.arange(total_res), atoms_per_res)
+    chain_ids_grid = np.repeat(chain_ids, atoms_per_res)
+    resnames_grid = np.repeat(resnames, atoms_per_res)
+    resindices_grid = np.repeat(res_indices, atoms_per_res)
+    relative_sasa_grid = np.repeat(relative_sasa, atoms_per_res)
+
+    # Filter valid atoms (SASA > 0)
+    mask = sasa_matrix.ravel() > 0
+    filtered = (
+        chain_ids_grid[mask],
+        resnames_grid[mask],
+        resindices_grid[mask],
+        atom_names[mask],
+        sasa_matrix.ravel()[mask],
+        relative_sasa_grid[mask]
+    )
+
+    # Create structured array
+    dtype = [
+        ('chain', 'U1'), ('resname', 'U3'), ('resindex', 'i4'),
+        ('atomname', 'U4'), ('atom_sasa', 'f4'), ('relative_sasa', 'f4')
+    ]
     
-    # Process binder chain
-    binder_rel_sasa = relative_sasa[target_len:]
-    for i, sasa in enumerate(binder_rel_sasa):
-        resname = residue_constants.restype_1to3[residue_constants.restypes[binder.aatype[i]]]
-        resid = i + 1
-        rel_sasa_dict[("B", resname, resid)] = float(sasa)
-    
-    return rel_sasa_dict
+    return np.array(list(zip(*filtered)), dtype=dtype)
 
 def predict_binding_affinity_jax(
     pdb_path: str | Path,
@@ -457,7 +448,7 @@ def predict_binding_affinity_jax(
 
     print("Convert sequences to one-hot")
     num_classes = len(residue_constants.restypes)
-    target_seq = jax.nn.one_hot(target.aatype, num_classes=num_classes)
+    target_seq = jax.nn.one_hot(target.aatype, num_classes=num_classes) #sequence_to_onehot
     binder_seq = jax.nn.one_hot(binder.aatype, num_classes=num_classes)
     total_seq = jnp.concatenate([target_seq, binder_seq])
 
@@ -468,27 +459,28 @@ def predict_binding_affinity_jax(
     
     print("Calculate SASA and relative SASA")
     complex_sasa = calculate_sasa(coords=complex_positions, vdw_radii=complex_radii, mask=complex_mask)
-    sasa_dict = convert_sasa_to_dict(complex_sasa, target, binder)
     relative_sasa = calculate_relative_sasa(complex_sasa, total_seq)
-    rsa_dict = convert_relative_sasa_to_dict(relative_sasa, target, binder)
-
+  
     print("Calculate NIS")
-    nis_a, nis_c, nis_p = analyse_nis_soft(relative_sasa, total_seq, acc_threshold)
+    nis_acp = analyse_nis(relative_sasa, total_seq, acc_threshold)
 
     print("Calculate binding affinity and convert to kd")
-    dg = IC_NIS(contact_types["CC"], contact_types["AC"], 
-                contact_types["PP"], contact_types["AP"], nis_a, nis_c)
+    #ic_cc: float, ic_ca: float, ic_pp: float, ic_pa:
+    dg = IC_NIS(contact_types[0], contact_types[3], contact_types[1], contact_types[4], nis_acp[0], nis_acp[1]) #jnp.array([cc, pp, aa, ac, ap, cp])
     kd = dg_to_kd(dg, temperature=temperature)
 
+    print("Convert SASA data to array")
+    sasa_dict = convert_sasa_to_array(complex_sasa, relative_sasa, target, binder)
+    print("Save Results")
     results = ProdigyResults(
-        contact_types=ContactAnalysis(**contact_types),
+        contact_types=ContactAnalysis(contact_types),
         binding_affinity=dg,
         dissociation_constant=kd,
-        nis_aliphatic=nis_a,
-        nis_charged=nis_c,
-        nis_polar=nis_p,
-        sasa_data=sasa_dict,
-        relative_sasa=rsa_dict
+        nis_aliphatic=nis_acp[0],
+        nis_charged=nis_acp[1],
+        nis_polar=nis_acp[2],
+        structure_id=Path(pdb_path).stem,
+        sasa_data=sasa_dict
     )
 
     if output_dir:

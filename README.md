@@ -34,11 +34,12 @@ run-prodigy-custom PRODIGYdataset/ --use-jax # otherwise default is cpu version
 | NIS Aliphatic                  | 0.999         | 0.207     |
 | NIS Charged                    | 1.000         | 0.139     |
 
-![Benchmark Analysis](benchmark_af/corr_plots_org_vs_jax.png)
-
-### Tested on a L4 GPU in Colab
+### Tested on a L4 GPU in Colab (run-prodigy-custom --use-jax)
 
 ![Benchmark Analysis](benchmark_af/ex_time_vs_seq_len.png)
+
+### SASA Values comparisons between freesasa (cpu version) and jax version (1000 Poitns)
+![Benchmark Analysis](benchmark_af/sasa_comparison.png)
 
 ## Usage Example
 

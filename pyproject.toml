@@ -14,7 +14,9 @@ dependencies = [
     "jaxlib",
     "biopython",
     "prodigy-prot",
-    "dm-tree"
+    "dm-tree",
+    "pandas",
+    "matplotlib"
 ]
 readme = "README.md"
 license = { file = "LICENSE" }
