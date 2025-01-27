@@ -1,7 +1,8 @@
 import numpy as np
 from typing import *
 from enum import Enum
-from . import residue_constants
+from bio_lib.common import residue_constants
+import jax.numpy as jnp
 
 class RelativeASAReference(NamedTuple):
     """Reference values for relative ASA calculations."""
@@ -148,3 +149,24 @@ class ResidueClassification:
             "sidechain_relative": (sidechain_asa / ref.sidechain) * 100
         }
 
+
+def get_residue_character_indices(classification_type: str = "ic") -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    residue_classifier = ResidueClassification(classification_type)
+    
+    character_indices: Dict[ResidueCharacter, list] = {
+        ResidueCharacter.CHARGED: [],
+        ResidueCharacter.POLAR: [],
+        ResidueCharacter.ALIPHATIC: []
+    }
+    
+    for res in residue_constants.restypes:
+        res3 = residue_constants.restype_1to3[res]
+        char = residue_classifier.aa_character[classification_type][res3]
+        idx = residue_constants.restype_order[res]
+        character_indices[char].append(idx)
+            
+    return (
+        jnp.array(character_indices[ResidueCharacter.CHARGED]),
+        jnp.array(character_indices[ResidueCharacter.POLAR]),
+        jnp.array(character_indices[ResidueCharacter.ALIPHATIC])
+    )

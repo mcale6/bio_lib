@@ -7,14 +7,18 @@ import jax
 import numpy as np
 import bio_lib.common.residue_constants as residue_constants
 import bio_lib.common.protein as Protein
-from bio_lib.common.residue_classification import ResidueClassification, ResidueCharacter
+from bio_lib.common.residue_classification import ResidueClassification, get_residue_character_indices
 from bio_lib.common.residue_library import default_library as residue_library
 from bio_lib.common.protein_jax import JAXStructureData, JaxProtein
 from bio_lib.shrake_rupley_jax import calculate_sasa
 
 RESIDUE_RADII_MATRIX = jnp.array(residue_library.radii_matrix)
 REFERENCE_RELATIVE_SASA_ARRAY = jnp.array(ResidueClassification().ref_rel_sasa_array)
-
+charged_idx_protorp, polar_idx_protorp, aliphatic_idx_protorp = get_residue_character_indices("protorp")
+CHARACTER_MATRIX_PROTORP = jnp.zeros((len(residue_constants.restypes), 3))
+CHARACTER_MATRIX_PROTORP = CHARACTER_MATRIX_PROTORP.at[charged_idx_protorp, 0].set(1.0)
+CHARACTER_MATRIX_PROTORP = CHARACTER_MATRIX_PROTORP.at[polar_idx_protorp, 1].set(1.0)
+CHARACTER_MATRIX_PROTORP = CHARACTER_MATRIX_PROTORP.at[aliphatic_idx_protorp, 2].set(1.0)
 
 @dataclass
 class ContactAnalysis:
@@ -146,27 +150,6 @@ class ProdigyResults:
             f"------------------------\n"
         )
 
-def get_residue_character_indices(classification_type: str = "ic") -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    residue_classifier = ResidueClassification(classification_type)
-    
-    character_indices: Dict[ResidueCharacter, list] = {
-        ResidueCharacter.CHARGED: [],
-        ResidueCharacter.POLAR: [],
-        ResidueCharacter.ALIPHATIC: []
-    }
-    
-    for res in residue_constants.restypes:
-        res3 = residue_constants.restype_1to3[res]
-        char = residue_classifier.aa_character[classification_type][res3]
-        idx = residue_constants.restype_order[res]
-        character_indices[char].append(idx)
-            
-    return (
-        jnp.array(character_indices[ResidueCharacter.CHARGED]),
-        jnp.array(character_indices[ResidueCharacter.POLAR]),
-        jnp.array(character_indices[ResidueCharacter.ALIPHATIC])
-    )
-
 def load_pdb_to_af(pdb_path: str, target_chain: str, binder_chain: str):
     with open(pdb_path, 'r') as f:
         pdb_str = f.read()
@@ -285,20 +268,22 @@ def analyse_contacts(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq:
 
 def analyse_nis(sasa_values: jnp.ndarray, aa_probs: jnp.ndarray, threshold: float = 0.05) -> jnp.ndarray:
     """Calculate NIS percentages for n_aliph, n_charged, and n_polar residues."""
-    charged_idx, polar_idx, aliphatic_idx = get_residue_character_indices("protorp")
+    # Combined character probabilities via matrix multiplication
+    p_chars = jnp.matmul(aa_probs, CHARACTER_MATRIX_PROTORP)  # [n_res, 3]
+    p_charged, p_polar, p_aliph = p_chars[:, 0], p_chars[:, 1], p_chars[:, 2]
     
-    p_charged = jnp.sum(aa_probs[..., charged_idx], axis=-1)
-    p_polar = jnp.sum(aa_probs[..., polar_idx], axis=-1) 
-    p_aliph = jnp.sum(aa_probs[..., aliphatic_idx], axis=-1)
-        
+    # Mask for residues meeting SASA threshold
     nis_mask = (sasa_values >= threshold)
     n_total = jnp.sum(nis_mask)
     
+    # Calculate weighted counts using mask
     n_charged = jnp.sum(nis_mask * p_charged)
     n_polar = jnp.sum(nis_mask * p_polar)
     n_aliph = jnp.sum(nis_mask * p_aliph)
     
+    # Avoid division by zero
     total = n_total + 1e-8
+    
     return jnp.array([
         100.0 * n_aliph / total,
         100.0 * n_charged / total, 
