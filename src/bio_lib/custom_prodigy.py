@@ -10,7 +10,7 @@ from prodigy_prot.modules.parsers import parse_structure
 
 # Create a dictionary comprehension that reorganizes the data
 REL_SASA = {res: asa.total for res, asa in ResidueClassification().rel_asa.items()}
-NACCESS_CONFIG_PATH = pkg_resources.resource_filename('bio_lib,data/naccess.config')
+NACCESS_CONFIG_PATH = pkg_resources.resource_filename('bio_lib','data/naccess.config')
 
 def execute_freesasa_api2(structure):
     """Compute SASA using freesasa and return absolute and relative SASA differences."""
@@ -95,17 +95,10 @@ class CustomProdigy(Prodigy):
         self.acc_threshold = acc_threshold
         # Make selection dict from user option or PDB chains
         selection_dict = {}
-        for igroup, group in enumerate(self.selection):
-            chains = group.split(",")
-            for chain in chains:
-                if chain in selection_dict:
-                    errmsg = (
-                        "Selections must be disjoint sets: "
-                        f"{chain} is repeated"
-                    )
-                    raise ValueError(errmsg)
-                selection_dict[chain] = igroup
-
+        self.selection = self.selection.split(",")
+        if len(self.selection) != 2:
+            raise ValueError("[-] Selection must be a list of two chains.")
+        selection_dict = {chain: idx for idx, chain in enumerate(self.selection)}
         # Contacts
         self.ic_network = calculate_ic(self.structure, d_cutoff=self.distance_cutoff, selection=selection_dict)
         self.bins = analyse_contacts(self.ic_network)

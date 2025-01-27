@@ -441,8 +441,7 @@ def convert_relative_sasa_to_dict(
 
 def predict_binding_affinity_jax(
     pdb_path: str | Path,
-    target_chain: str = "A",
-    binder_chain: str = "B",
+    selection: str = "A,B",
     cutoff: float = 5.5,
     acc_threshold: float = 0.05,
     temperature: float = 25.0,
@@ -450,6 +449,7 @@ def predict_binding_affinity_jax(
     quiet: bool = True,
 ) -> ProdigyResults:
     """Run the full PRODIGY analysis pipeline."""
+    target_chain, binder_chain = selection.split(",")
     target, binder = load_pdb_to_af(pdb_path, target_chain, binder_chain)
     complex_positions = jnp.concatenate([target.atom_positions, binder.atom_positions], axis=0).reshape(-1, 3)
     complex_radii = jnp.concatenate([get_atom_radii(target.aatype), get_atom_radii(binder.aatype)])

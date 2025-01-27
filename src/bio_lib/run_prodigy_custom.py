@@ -13,7 +13,7 @@ from bio_lib.helpers.utils import collect_pdb_files, format_time
 def run(
     input_path: Path,
     output_dir: Path,
-    selection: str = None,
+    selection: str = "A,B",
     use_jax: bool = False,
     temperature: float = 25.0,
     distance_cutoff: float = 5.5,
@@ -30,16 +30,6 @@ def run(
     run_dir = output_dir / timestamp
     run_dir.mkdir(parents=True, exist_ok=True)
     
-    # Parse selection into target and binder chains if using JAX
-    if use_jax:
-        if not selection:
-            target_chain, binder_chain = "A", "B"
-        else:
-            chains = selection.split(',')
-            if len(chains) != 2:
-                raise ValueError("JAX mode requires exactly two chains (e.g., 'A,B')")
-            target_chain, binder_chain = chains
-    
     for pdb_file in pdb_files:
         try:
             start_time = time.perf_counter()
@@ -47,8 +37,7 @@ def run(
             if use_jax:
                 result = predict_binding_affinity_jax(
                     pdb_path=pdb_file,
-                    target_chain=target_chain,
-                    binder_chain=binder_chain,
+                    selection=selection,
                     cutoff=distance_cutoff,
                     acc_threshold=acc_threshold,
                     output_dir=str(run_dir / pdb_file.stem),
@@ -109,8 +98,8 @@ def run(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run PRODIGY analysis on protein complex(es)")
     parser.add_argument("input_path", type=Path, help="Path to PDB file or directory")
-    parser.add_argument("--selection", type=str, default=None, 
-                       help="Chain selection (e.g., 'A,B' for JAX mode, or custom selection for standard mode)")
+    parser.add_argument("--selection", type=str, default="A,B", 
+                       help="Chain selection (e.g., 'A,B' Only chain A and B will be considered at the moment)")
     parser.add_argument("--use-jax", action="store_true", default=False, help="Use JAX-based implementation")
     parser.add_argument("--temperature", type=float, default=25.0, help="Temperature in Celsius (default: 25.0)")
     parser.add_argument("--distance-cutoff", type=float, default=5.5, help="Distance cutoff (Å) (default: 5.5)")
