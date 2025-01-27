@@ -1,6 +1,19 @@
 from pathlib import Path
 from typing import List
 from datetime import datetime
+from typing import Any, Dict, Union
+import jax.numpy as jnp
+import numpy as np
+
+def convert_jax_arrays(obj: Any) -> Any:
+    """Convert JAX arrays to native Python types recursively."""
+    if isinstance(obj, (jnp.ndarray, np.ndarray)):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {k: convert_jax_arrays(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_jax_arrays(x) for x in obj]
+    return obj
 
 def collect_pdb_files(input_path: Path) -> List[Path]:
     """Collect all PDB files from input path."""

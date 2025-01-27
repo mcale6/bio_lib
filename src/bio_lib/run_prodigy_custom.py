@@ -8,7 +8,7 @@ import statistics
 from typing import List, Dict
 from bio_lib.custom_prodigy import predict_binding_affinity
 from bio_lib.custom_prodigy_jax import predict_binding_affinity_jax
-from bio_lib.helpers.utils import collect_pdb_files, format_time
+from bio_lib.helpers.utils import collect_pdb_files, format_time, convert_jax_arrays
 
 def run(
     input_path: Path,
@@ -58,7 +58,7 @@ def run(
             execution_time = time.perf_counter() - start_time
             execution_times.append(execution_time)
             
-            result_dict = result.to_dict() if hasattr(result, 'to_dict') else result
+            result_dict = convert_jax_arrays(result.to_dict() if hasattr(result, 'to_dict') else result)
             result_dict['execution_time'] = {
                 'seconds': execution_time,
                 'formatted': format_time(execution_time)

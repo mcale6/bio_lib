@@ -82,11 +82,11 @@ class ContactAnalysis:
 @dataclass
 class ProdigyResults:
     contact_types: ContactAnalysis
-    binding_affinity: float  
-    dissociation_constant: float
-    nis_aliphatic: float
-    nis_charged: float  
-    nis_polar: float
+    binding_affinity: jnp.ndarray
+    dissociation_constant: jnp.ndarray
+    nis_aliphatic: jnp.ndarray
+    nis_charged: jnp.ndarray
+    nis_polar: jnp.ndarray
     structure_id: str = "_"
     sasa_data: np.ndarray = None
 
@@ -106,7 +106,6 @@ class ProdigyResults:
                 for row in self.sasa_data:
                     f.write(f"{row['chain']},{row['resname']},{row['resindex']},"
                            f"{row['atomname']},{row['atom_sasa']:.3f},{row['relative_sasa']:.3f}\n")
-
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert results to a dictionary including all data."""
