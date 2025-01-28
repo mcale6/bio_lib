@@ -55,14 +55,35 @@ def calculate_sasa(
 
     return sasa
 
+def estimate_optimal_block_size(n_atoms: int) -> int:
+    a_block = 6.8879e+02  # Amplitude
+    b_block = -2.6156e-04  # Decay rate
+    c_block = 17.4525  # Offset
+
+    # Estimate block size using the exponential decay equation
+    block_size = int(round(a_block * np.exp(b_block * n_atoms) + c_block))
+
+    # Add tighter bounds to prevent memory issues
+    max_block = min(
+        250,  # Absolute maximum
+        int(5000 / np.sqrt(n_atoms / 1000))  # Dynamic limit based on atom count
+    )
+
+    return max(5, min(block_size, max_block))
+
+def estimate_time(n_atoms: int) -> float:
+    a_time = 5.7156e-01  # Amplitude
+    b_time = 1.7124e-04  # Growth rate
+    c_time = -0.3772  # Offset
+    return a_time * np.exp(b_time * n_atoms) + c_time
 
 def calculate_sasa2(
     coords: jnp.ndarray, 
     vdw_radii: jnp.ndarray, 
     mask: jnp.ndarray, 
+    block_size: jnp.ndarray,
     sphere_points: jnp.ndarray = SPHERE_POINTS,
     probe_radius: float = 1.4,
-    block_size: int = 100  # Adjust based on available memory
 ) -> jnp.ndarray:
     """
     Calculate the solvent-accessible surface area (SASA).
