@@ -55,60 +55,68 @@ def calculate_sasa(
 
     return sasa
 
-def calculate_sasa_optimized(
-    coords: jnp.ndarray,
-    vdw_radii: jnp.ndarray,
-    mask: jnp.ndarray,
+
+def calculate_sasa2(
+    coords: jnp.ndarray, 
+    vdw_radii: jnp.ndarray, 
+    mask: jnp.ndarray, 
     sphere_points: jnp.ndarray = SPHERE_POINTS,
     probe_radius: float = 1.4,
-    max_neighbors: int = 200
+    block_size: int = 100  # Adjust based on available memory
 ) -> jnp.ndarray:
-    """Optimized SASA calculation using neighbor lists and JAX loops."""
-    # ===== 1. Preprocessing =====
-    N = coords.shape[0]
-    M = sphere_points.shape[0]
-    
-    # Mask invalid atoms
-    masked_coords = coords * mask[:, None]
-    masked_radii = vdw_radii * mask
-    radii_with_probe = (masked_radii + probe_radius) * mask
-    
-    # Precompute squared radii with probe
-    radii_with_probe_sq = (radii_with_probe ** 2).astype(coords.dtype)
-    
-    # ===== 2. Compute Interaction Matrix (Neighbor List) =====
-    # Pairwise distances between all atoms
-    diff = masked_coords[:, None, :] - masked_coords[None, :, :]
-    dist2 = jnp.sum(diff ** 2, axis=-1)
-    
-    # Compute interaction cutoff matrix
-    radsum = radii_with_probe[:, None] + radii_with_probe[None, :]
-    interaction_mask = (dist2 <= (radsum ** 2)) & ~jnp.eye(N, dtype=bool)
-    
-    # ===== 3. Process Each Atom's Neighbors =====
-    def process_atom(i):
-        # Generate sphere points for atom i
-        atom_radius = radii_with_probe[i]
-        points = masked_coords[i] + sphere_points * atom_radius  # [M, 3]
+    """
+    Calculate the solvent-accessible surface area (SASA).
+    """
+    # Apply mask to coordinates and radii
+    masked_coords = coords * mask[:, None]  # [N, 3]
+    masked_radii = vdw_radii * mask        # [N]
+    radii_with_probe = (masked_radii + probe_radius) * mask  # [N]
+
+    # Interaction matrix: check for overlapping atoms
+    diff = masked_coords[:, None, :] - masked_coords[None, :, :]  # [N, N, 3]
+    dist2 = jnp.sum(diff ** 2, axis=-1)  # [N, N]
+    radsum2 = (radii_with_probe[:, None] + radii_with_probe[None, :]) ** 2
+    interaction_matrix = (dist2 <= radsum2) & ~jnp.eye(coords.shape[0], dtype=bool)
+
+    n_atoms = coords.shape[0]
+    n_points = sphere_points.shape[0]
+    buried_points = jnp.zeros((n_atoms, n_points), dtype=bool)
+
+    # Process atoms in blocks to reduce peak memory usage
+    for start_idx in range(0, n_atoms, block_size):
+        end_idx = min(start_idx + block_size, n_atoms)
         
-        # Find neighbors for atom i
-        neighbors = jnp.where(interaction_mask[i], size=max_neighbors, fill_value=-1)[0]
+        # Calculate scaled points for this block
+        block_scaled_points = (sphere_points[None, :, :] * 
+                             radii_with_probe[start_idx:end_idx, None, None] + 
+                             masked_coords[start_idx:end_idx, None, :])  # [block, M, 3]
         
-        # Check burial for each point
-        def check_point(point):
-            # Compute distances to neighbors
-            neighbor_coords = masked_coords[neighbors]
-            neighbor_radii_sq = radii_with_probe_sq[neighbors]
-            
-            # Calculate distances and check burial
-            dist2_neighbors = jnp.sum((point - neighbor_coords) ** 2, axis=-1)
-            is_buried = jnp.any((dist2_neighbors <= neighbor_radii_sq) & (neighbors != -1))
-            return ~is_buried
+        # Calculate distances to all atoms using a more memory-efficient formulation
+        # |a-b|² = |a|² + |b|² - 2⟨a,b⟩
+        scaled_points_norm2 = jnp.sum(block_scaled_points**2, axis=-1)  # [block, M]
+        coords_norm2 = jnp.sum(masked_coords**2, axis=-1)  # [N]
         
-        # Vectorize over sphere points
-        accessible = jnp.sum(lax.map(check_point, points))
-        return 4.0 * jnp.pi * (atom_radius ** 2) * (accessible / M)
-    
-    # Compute SASA for all atoms
-    sasa_values = lax.map(process_atom, jnp.arange(N))
-    return sasa_values * mask
+        # Compute dot product term efficiently
+        dot_prod = jnp.einsum('bms,ns->bmn', 
+                            block_scaled_points,  # [block, M, 3]
+                            masked_coords)        # [N, 3]
+        
+        # Calculate distances
+        dist2 = (scaled_points_norm2[:, :, None] + 
+                coords_norm2[None, None, :] - 
+                2 * dot_prod)  # [block, M, N]
+        
+        # Check which points are buried
+        is_buried = (dist2 <= radii_with_probe[None, None, :]**2) & \
+                   interaction_matrix[start_idx:end_idx, None, :]
+        block_buried = jnp.any(is_buried, axis=-1)  # [block, M]
+        
+        # Update buried points for this block
+        buried_points = buried_points.at[start_idx:end_idx].set(block_buried)
+
+    # Calculate final SASA
+    n_accessible = n_points - jnp.sum(buried_points, axis=-1)
+    areas = 4.0 * jnp.pi * (radii_with_probe ** 2)
+    sasa = areas * (n_accessible / n_points)
+
+    return sasa
