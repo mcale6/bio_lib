@@ -67,7 +67,7 @@ class CustomProdigy(Prodigy):
         # Generate filenames
         res_fname_json = os.path.basename(struct_path + "_binding_results.json")
         res_fname_csv = os.path.basename(struct_path + "_sasa_data.csv")
-
+        print("Results will be saved in: ", res_fname_json, res_fname_csv)
         # Format CSV data
         asa_csv_lines = "\n".join(["chain,resname,resid,atom,sasa,relative_sasa"] + 
             [f"{chain},{resname},{resid.strip()},{atom.strip()},{sasa:.3f},{self.rsa_data.get((chain,resname,resid), 0.0):.3f}" 

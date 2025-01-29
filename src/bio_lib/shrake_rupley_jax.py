@@ -5,7 +5,7 @@ import pkg_resources
 from jax import lax
 
 # Create constant
-SPHERE_POINTS = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') , skiprows=1))
+SPHERE_POINTS = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson100.xyz') , skiprows=1))
 
 # Each point comparison involved N=16,428 × 16,428 ≈ 270 million pairs
 # If we assume ~100 neighbors per atom, it's only 16,428 × 100 ≈ 1.6 million pairs

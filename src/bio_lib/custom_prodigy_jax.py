@@ -10,7 +10,7 @@ import bio_lib.common.protein as Protein
 from bio_lib.common.residue_classification import ResidueClassification, get_residue_character_indices
 from bio_lib.common.residue_library import default_library as residue_library
 from bio_lib.common.protein_jax import JAXStructureData, JaxProtein
-from bio_lib.shrake_rupley_jax import calculate_sasa
+from bio_lib.shrake_rupley_jax import calculate_sasa, calculate_sasa2
 
 RESIDUE_RADII_MATRIX = jnp.array(residue_library.radii_matrix)
 REFERENCE_RELATIVE_SASA_ARRAY = jnp.array(ResidueClassification().ref_rel_sasa_array)
@@ -281,7 +281,6 @@ def analyse_contacts_af(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_s
 
     return jnp.array([cc, pp, aa, ac, ap, cp])
 
-
 def calculate_contacts(
     target_pos: jnp.ndarray,
     binder_pos: jnp.ndarray,
@@ -289,22 +288,24 @@ def calculate_contacts(
     binder_mask: jnp.ndarray,
     cutoff: float = 5.5
 ) -> jnp.ndarray:
-    """contact calculation block-wise operations."""
-    # Reshape to atom-level coordinates
-    target_atoms = target_pos.reshape(-1, 3)
-    binder_atoms = binder_pos.reshape(-1, 3)
-    
-    # Compute squared distances using optimized JAX operations
-    dist2 = jnp.sum((target_atoms[:, None] - binder_atoms[None, :]) ** 2, axis=-1)
-    
+    # Reshape masks to residue-atom format
+    target_mask = target_mask.reshape(target_pos.shape[0], -1)
+    binder_mask = binder_mask.reshape(binder_pos.shape[0], -1)
+
+    # Calculate pairwise distances using broadcasting
+    diff = target_pos[:, None, :, None, :] - binder_pos[None, :, None, :, :]
+    dist2 = jnp.sum(diff ** 2, axis=-1)  # Shape: [T, B, 37, 37]
+
     # Combine masks and distance criteria
-    atom_contacts = (dist2 <= (cutoff ** 2)) & (target_mask.reshape(-1)[:, None] > 0) & (binder_mask.reshape(-1)[None, :] > 0)
-    
-    # Reshape and reduce to residue contacts
-    return jnp.any(atom_contacts.reshape(
-        target_pos.shape[0], 37,
-        binder_pos.shape[0], 37
-    ), axis=(1, 3))
+    cutoff_sq = cutoff ** 2
+    contact_mask = (
+        (dist2 <= cutoff_sq) &
+        (target_mask[:, None, :, None] > 0) & 
+        (binder_mask[None, :, None, :] > 0)
+    )
+
+    # Aggregate to residue-level contacts
+    return jnp.any(contact_mask, axis=(2, 3))
 
 def analyse_contacts(contacts: jnp.ndarray, target_seq: jnp.ndarray, binder_seq: jnp.ndarray) -> jnp.ndarray:
     """contact analysis using matrix operations."""
@@ -415,10 +416,9 @@ def convert_sasa_to_array(
     target: Protein,
     binder: Protein,
 ) -> np.ndarray:
-    """Vectorized version that's ~100x faster for large structures."""
     atoms_per_res = 37
     atom_types = np.array(residue_constants.atom_types)
-    restypes = residue_constants.restypes + ['X']
+    restypes = residue_constants.restypes #+ ['X']
     restype_1to3 = residue_constants.restype_1to3
 
     # Combine target and binder data
@@ -426,42 +426,39 @@ def convert_sasa_to_array(
     binder_res = len(binder.aatype)
     total_res = target_res + binder_res
 
-    # Reshape SASA data to [total_res, atoms_per_res]
-    sasa_matrix = complex_sasa.reshape(total_res, atoms_per_res)
+    # Combined atom mask (flattened)
+    combined_mask = jnp.concatenate([target.atom_mask, binder.atom_mask]).ravel()
+    combined_mask_np = np.asarray(combined_mask, dtype=bool)
 
-    # Create chain identifiers
-    chain_ids = np.concatenate([
-        np.full(target_res, 'A'),
-        np.full(binder_res, 'B')
-    ])
+    # Chain IDs for each residue
+    chain_ids = np.concatenate([np.full(target_res, 'A'), np.full(binder_res, 'B')])
 
-    # Create residue indices (1-based)
+    # Residue indices (1-based)
     res_indices = np.concatenate([target.residue_index, binder.residue_index]).astype(int)
 
-    # Create residue names
-    target_resnames = np.array([restype_1to3[restypes[aa]] for aa in target.aatype])
-    binder_resnames = np.array([restype_1to3[restypes[aa]] for aa in binder.aatype])
+    # Residue names using vectorized lookup
+    restype_1to3_arr = np.array([restype_1to3[r] for r in restypes], dtype='U3')
+    target_resnames = restype_1to3_arr[np.array(target.aatype)]
+    binder_resnames = restype_1to3_arr[np.array(binder.aatype)]
     resnames = np.concatenate([target_resnames, binder_resnames])
 
-    # Create atom name grid
+    # Atom names for all atoms
     atom_names = np.tile(atom_types, total_res)
-    
-    # Create full index grids
-    res_idx_grid = np.repeat(np.arange(total_res), atoms_per_res)
-    chain_ids_grid = np.repeat(chain_ids, atoms_per_res)
-    resnames_grid = np.repeat(resnames, atoms_per_res)
-    resindices_grid = np.repeat(res_indices, atoms_per_res)
-    relative_sasa_grid = np.repeat(relative_sasa, atoms_per_res)
 
-    # Filter valid atoms (SASA > 0)
-    mask = sasa_matrix.ravel() > 0
-    filtered = (
-        chain_ids_grid[mask],
-        resnames_grid[mask],
-        resindices_grid[mask],
-        atom_names[mask],
-        sasa_matrix.ravel()[mask],
-        relative_sasa_grid[mask]
+    # Expand residue-level data to atom-level
+    chain_ids_atom = np.repeat(chain_ids, atoms_per_res)
+    resnames_atom = np.repeat(resnames, atoms_per_res)
+    resindices_atom = np.repeat(res_indices, atoms_per_res)
+    relative_sasa_atom = np.repeat(relative_sasa, atoms_per_res)
+
+    # Apply mask to filter valid atoms
+    filtered_data = (
+        chain_ids_atom[combined_mask_np],
+        resnames_atom[combined_mask_np],
+        resindices_atom[combined_mask_np],
+        atom_names[combined_mask_np],
+        np.asarray(complex_sasa)[combined_mask_np],
+        relative_sasa_atom[combined_mask_np]
     )
 
     # Create structured array
@@ -469,8 +466,7 @@ def convert_sasa_to_array(
         ('chain', 'U1'), ('resname', 'U3'), ('resindex', 'i4'),
         ('atomname', 'U4'), ('atom_sasa', 'f4'), ('relative_sasa', 'f4')
     ]
-    
-    return np.array(list(zip(*filtered)), dtype=dtype)
+    return np.array(list(zip(*filtered_data)), dtype=dtype)
 
 def predict_binding_affinity_jax(
     pdb_path: str | Path,
