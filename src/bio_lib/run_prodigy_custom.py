@@ -8,18 +8,6 @@ import statistics
 from typing import List, Dict
 from bio_lib.custom_prodigy import predict_binding_affinity
 from bio_lib.custom_prodigy_jax import predict_binding_affinity_jax
-from bio_lib.helpers.utils import collect_pdb_files, format_time, convert_jax_arrays
-
-import argparse
-from pathlib import Path
-import json
-import sys
-from datetime import datetime
-import time
-import statistics
-from typing import List, Dict
-from bio_lib.custom_prodigy import predict_binding_affinity
-from bio_lib.custom_prodigy_jax import predict_binding_affinity_jax
 from bio_lib.helpers.utils import collect_pdb_files, format_time, NumpyEncoder
 
 def run(
