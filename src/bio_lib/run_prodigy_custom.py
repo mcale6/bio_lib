@@ -10,6 +10,18 @@ from bio_lib.custom_prodigy import predict_binding_affinity
 from bio_lib.custom_prodigy_jax import predict_binding_affinity_jax
 from bio_lib.helpers.utils import collect_pdb_files, format_time, convert_jax_arrays
 
+import argparse
+from pathlib import Path
+import json
+import sys
+from datetime import datetime
+import time
+import statistics
+from typing import List, Dict
+from bio_lib.custom_prodigy import predict_binding_affinity
+from bio_lib.custom_prodigy_jax import predict_binding_affinity_jax
+from bio_lib.helpers.utils import collect_pdb_files, format_time, NumpyEncoder
+
 def run(
     input_path: Path,
     output_dir: Path,
@@ -18,6 +30,7 @@ def run(
     temperature: float = 25.0,
     distance_cutoff: float = 5.5,
     acc_threshold: float = 0.05,
+    sphere_points: int = 100,
     output_format: str = "both",
     quiet: bool = False
 ) -> Dict[str, Dict]:
@@ -40,6 +53,7 @@ def run(
                     selection=selection,
                     cutoff=distance_cutoff,
                     acc_threshold=acc_threshold,
+                    sphere_points=sphere_points,
                     output_dir=str(run_dir / pdb_file.stem),
                     quiet=quiet or output_format == "json"
                 )
@@ -50,15 +64,23 @@ def run(
                     temperature=temperature,
                     distance_cutoff=distance_cutoff,
                     acc_threshold=acc_threshold,
+                    sphere_points=sphere_points,
                     save_results=True,
                     output_dir=str(run_dir / pdb_file.stem),
                     quiet=quiet
                 )
 
+
             execution_time = time.perf_counter() - start_time
             execution_times.append(execution_time)
             
-            result_dict = convert_jax_arrays(result.to_dict() if hasattr(result, 'to_dict') else result)
+            # Convert ProdigyResults to dictionary
+            if hasattr(result, 'to_dict'):
+                result_dict = result.to_dict()
+            else:
+                # For backwards compatibility
+                result_dict = result
+            
             result_dict['execution_time'] = {
                 'seconds': execution_time,
                 'formatted': format_time(execution_time)
@@ -67,11 +89,16 @@ def run(
             
             if output_format in ["json", "both"]:
                 output_path = run_dir / f"{pdb_file.stem}_results.json"
-                output_path.write_text(json.dumps(result_dict, indent=2))
+                with open(output_path, 'w') as f:
+                    json.dump(result_dict, indent=2, cls=NumpyEncoder, fp=f)
             
             if output_format in ["human", "both"] and not quiet:
-                print(f"\nResults for {pdb_file.name}:")
-                print(json.dumps(result_dict, indent=2))
+                if hasattr(result, '__str__'):
+                    print(f"\nResults for {pdb_file.name}:")
+                    print(result)  # Use the custom __str__ method
+                else:
+                    print(f"\nResults for {pdb_file.name}:")
+                    print(json.dumps(result_dict, indent=2))
                 print(f"Execution time: {format_time(execution_time)}")
                 
         except Exception as e:
@@ -90,8 +117,10 @@ def run(
             'std': statistics.stdev(execution_times) if len(execution_times) > 1 else 0
         }
     
+    # Save combined results
     combined_output = run_dir / "combined_results.json"
-    combined_output.write_text(json.dumps(all_results, indent=2))
+    with open(combined_output, 'w') as f:
+        json.dump(all_results, indent=2, cls=NumpyEncoder, fp=f)
     
     return all_results
 
@@ -105,7 +134,7 @@ def main() -> int:
     parser.add_argument("--distance-cutoff", type=float, default=5.5, help="Distance cutoff (Å) (default: 5.5)")
     parser.add_argument("--acc-threshold", type=float, default=0.05, help="Accessibility threshold (default: 0.05)")
     parser.add_argument("--output-dir", type=Path, default=Path("results"), help="Output directory")
-    parser.add_argument("--quiet", action="store_true", help="Outputs only the predicted affinity value")
+    parser.add_argument("--quiet", default=True, action="store_true", help="Outputs only the predicted affinity value")
     parser.add_argument("--output-format", choices=["json", "human", "both"], default="both", 
                        help="Output format (default: both)")
     args = parser.parse_args()

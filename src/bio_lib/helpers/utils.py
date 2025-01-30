@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, Union
 import jax.numpy as jnp
 import numpy as np
+import json
 
 def convert_jax_arrays(obj: Any) -> Any:
     """Convert JAX arrays to native Python types recursively."""
@@ -15,6 +16,16 @@ def convert_jax_arrays(obj: Any) -> Any:
         return [convert_jax_arrays(x) for x in obj]
     return obj
 
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NumpyEncoder, self).default(obj)
+    
 def collect_pdb_files(input_path: Path) -> List[Path]:
     """Collect all PDB files from input path."""
     if input_path.suffix.lower() in ['.pdb', '.ent']:
@@ -48,3 +59,26 @@ def setup_output_path(pdb_path: Path, output_dir: Path) -> Path:
     
     base_name = pdb_path.stem
     return output_subdir / f"{base_name}_results.json"
+
+def estimate_optimal_block_size(n_atoms: int) -> int:
+    a_block = 6.8879e+02  # Amplitude
+    b_block = -2.6156e-04  # Decay rate
+    c_block = 17.4525  # Offset
+
+    # Estimate block size using the exponential decay equation
+    block_size = int(round(a_block * np.exp(b_block * n_atoms) + c_block))
+
+    # Add tighter bounds to prevent memory issues
+    max_block = min(
+        250,  # Absolute maximum
+        int(5000 / np.sqrt(n_atoms / 1000))  # Dynamic limit based on atom count
+    )
+
+    return max(5, min(block_size, max_block))
+
+def estimate_time(n_atoms: int) -> float:
+    a_time = 5.7156e-01  # Amplitude
+    b_time = 1.7124e-04  # Growth rate
+    c_time = -0.3772  # Offset
+    return a_time * np.exp(b_time * n_atoms) + c_time
+

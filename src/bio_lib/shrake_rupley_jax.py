@@ -2,19 +2,16 @@ import jax.numpy as jnp
 from jax import jit
 import numpy as np
 import pkg_resources
-from jax import lax
 
-# Create constant
-SPHERE_POINTS = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson100.xyz') , skiprows=1))
+_SPHERE_POINTS_100 = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson100.xyz') , skiprows=1))
+_SPHERE_POINTS_1000 = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') , skiprows=1))
 
-# Each point comparison involved N=16,428 × 16,428 ≈ 270 million pairs
-# If we assume ~100 neighbors per atom, it's only 16,428 × 100 ≈ 1.6 million pairs
 @jit
 def calculate_sasa(
     coords: jnp.ndarray, 
     vdw_radii: jnp.ndarray, 
     mask: jnp.ndarray, 
-    sphere_points: jnp.ndarray = SPHERE_POINTS,
+    sphere_points: jnp.ndarray = _SPHERE_POINTS_1000,
     probe_radius: float = 1.4
 ) -> jnp.ndarray:
     """
@@ -55,34 +52,12 @@ def calculate_sasa(
 
     return sasa
 
-def estimate_optimal_block_size(n_atoms: int) -> int:
-    a_block = 6.8879e+02  # Amplitude
-    b_block = -2.6156e-04  # Decay rate
-    c_block = 17.4525  # Offset
-
-    # Estimate block size using the exponential decay equation
-    block_size = int(round(a_block * np.exp(b_block * n_atoms) + c_block))
-
-    # Add tighter bounds to prevent memory issues
-    max_block = min(
-        250,  # Absolute maximum
-        int(5000 / np.sqrt(n_atoms / 1000))  # Dynamic limit based on atom count
-    )
-
-    return max(5, min(block_size, max_block))
-
-def estimate_time(n_atoms: int) -> float:
-    a_time = 5.7156e-01  # Amplitude
-    b_time = 1.7124e-04  # Growth rate
-    c_time = -0.3772  # Offset
-    return a_time * np.exp(b_time * n_atoms) + c_time
-
-def calculate_sasa2(
+def calculate_sasa_batch(
     coords: jnp.ndarray, 
     vdw_radii: jnp.ndarray, 
     mask: jnp.ndarray, 
     block_size: jnp.ndarray,
-    sphere_points: jnp.ndarray = SPHERE_POINTS,
+    sphere_points: jnp.ndarray = _SPHERE_POINTS_100,
     probe_radius: float = 1.4,
 ) -> jnp.ndarray:
     """

@@ -1,4 +1,0 @@
-include LICENSE
-include README.md
-include src/bio_lib/data/thomson1000.xyz
-include src/bio_lib/data/vdw.radii

@@ -2,19 +2,30 @@ import numpy as np
 from typing import *
 from enum import Enum
 from bio_lib.common import residue_constants
-import jax.numpy as jnp
+from dataclasses import dataclass
 
-class RelativeASAReference(NamedTuple):
+@dataclass(frozen=True)
+class RelativeASAReference:
     """Reference values for relative ASA calculations."""
     total: float
     backbone: float
     sidechain: float
 
 class ResidueCharacter(str, Enum):
-    """Enum defining possible residue characters."""
-    ALIPHATIC = "A"
-    POLAR = "P"
-    CHARGED = "C"
+    """Enum defining possible residue characters.
+    """
+    ALIPHATIC = "A"   
+    CHARGED = "C"    
+    POLAR = "P"     
+
+    @classmethod
+    def create_ordered_dict(cls) -> dict:
+        """Creates ordered dictionary with empty lists for each character type.""" #Fixed order: ALIPHATIC (0) -> CHARGED (1) -> POLAR (2)
+        return {
+            cls.ALIPHATIC: [],
+            cls.CHARGED: [],
+            cls.POLAR: []
+        }
 
 class ResidueClassification:
     """Handles residue classifications, properties, and SASA calculations."""
@@ -96,10 +107,13 @@ class ResidueClassification:
             "TYR": RelativeASAReference(total=212.76, backbone=35.38, sidechain=177.38),
         }
 
-        self.classification_type = classification_type
+        self.classification_type = classification_type   
         # Convert property dictionaries to ordered arrays
         self._init_ordered_props()
-        self.ref_rel_sasa_array = self._build_ref_rel_sasa_array()
+        self._character_indices = self._build_character_indices()
+        self._classification_matrix = self._build_classification_matrix()
+        self._relative_sasa_array = self._build_reference_relative_sasa_array()
+    
 
     def _init_ordered_props(self):
         """Initialize ordered property arrays matching residue_constants order."""
@@ -109,12 +123,50 @@ class ResidueClassification:
                 prop_dict[aa] for aa in residue_constants.restypes
             ])
 
-    def _build_ref_rel_sasa_array(self) -> np.ndarray:
+    def _build_character_indices(self) -> dict:
+        """Build and cache character indices for quick access."""
+        indices = ResidueCharacter.create_ordered_dict()       
+        for res in residue_constants.restypes:
+            res3 = residue_constants.restype_1to3[res]
+            char = self.aa_character[self.classification_type][res3]
+            idx = residue_constants.restype_order[res]
+            indices[char].append(idx)
+            
+        return {
+            char: np.array(idxs, dtype=np.int32)
+            for char, idxs in indices.items()
+        }
+    
+    def _build_classification_matrix(self) -> np.ndarray:
+        """Build and cache classification matrix for efficient computation."""
+        matrix = []
+        for res in residue_constants.restypes:
+            res3 = residue_constants.restype_1to3[res]
+            char = self.aa_character[self.classification_type][res3]
+            matrix.append([float(char == i) for i in self._character_indices.keys()])
+        return np.array(matrix, dtype=np.float32)
+
+    def _build_reference_relative_sasa_array(self) -> np.ndarray:
         """Build array of reference SASA values for all residue types."""
         return np.array([
             self.rel_asa[residue_constants.restype_1to3[aa]].total 
             for aa in residue_constants.restypes
         ])
+    
+    @property
+    def character_indices(self) -> dict:
+        """Get cached character indices."""
+        return self._character_indices
+    
+    @property
+    def classification_matrix(self) -> np.ndarray:
+        """Get cached classification matrix."""
+        return self._classification_matrix
+    
+    @property
+    def relative_sasa_array(self) -> np.ndarray:
+        """Get cached classification matrix."""
+        return self._relative_sasa_array
     
     def get_character(self, residue: str) -> ResidueCharacter:
         """Get the character classification of a residue."""
@@ -132,41 +184,19 @@ class ResidueClassification:
             for prop_name, prop_array in self.ordered_props.items()
         }
 
-    def calculate_relative_asa(self, residue: str, total_asa: float,
-                           backbone_asa: float, sidechain_asa: float) -> Dict[str, float]:
-        """Calculate relative ASA values for a residue."""
-        ref = self.get_reference_asa(residue)
-        if ref is None:
-            return {
-                "total_relative": float('nan'),
-                "backbone_relative": float('nan'),
-                "sidechain_relative": float('nan')
-            }
-
-        return {
-            "total_relative": (total_asa / ref.total) * 100,
-            "backbone_relative": (backbone_asa / ref.backbone) * 100,
-            "sidechain_relative": (sidechain_asa / ref.sidechain) * 100
-        }
-
-
-def get_residue_character_indices(classification_type: str = "ic") -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    residue_classifier = ResidueClassification(classification_type)
-    
-    character_indices: Dict[ResidueCharacter, list] = {
-        ResidueCharacter.CHARGED: [],
-        ResidueCharacter.POLAR: [],
-        ResidueCharacter.ALIPHATIC: []
-    }
-    
-    for res in residue_constants.restypes:
-        res3 = residue_constants.restype_1to3[res]
-        char = residue_classifier.aa_character[classification_type][res3]
-        idx = residue_constants.restype_order[res]
-        character_indices[char].append(idx)
-            
-    return (
-        jnp.array(character_indices[ResidueCharacter.CHARGED]),
-        jnp.array(character_indices[ResidueCharacter.POLAR]),
-        jnp.array(character_indices[ResidueCharacter.ALIPHATIC])
-    )
+#    "ic": np.array([
+#        # Generated from ResidueClassification.aa_character["ic"]
+#        # Order: A, R, N, D, C, Q, E, G, H, I, L, K, M, F, P, S, T, W, Y, V
+#        [1,0,0], [0,0,1], [0,1,0], [0,0,1], [1,0,0],  # A, R, N, D, C
+#        [0,1,0], [0,0,1], [1,0,0], [0,0,1], [1,0,0],  # Q, E, G, H, I
+#        [1,0,0], [0,0,1], [1,0,0], [1,0,0], [1,0,0],  # L, K, M, F, P
+#        [0,1,0], [0,1,0], [1,0,0], [1,0,0], [1,0,0]   # S, T, W, Y, V
+#    ], dtype=np.float32),
+#    "protorp": np.array([
+#        # Generated from ResidueClassification.aa_character["protorp"]
+#        [1,0,0], [0,0,1], [0,1,0], [0,0,1], [0,1,0],  # A, R, N, D, C
+#        [0,1,0], [0,0,1], [1,0,0], [0,1,0], [1,0,0],  # Q, E, G, H, I
+#        [1,0,0], [0,0,1], [1,0,0], [1,0,0], [1,0,0],  # L, K, M, F, P
+#        [0,1,0], [0,1,0], [0,1,0], [0,1,0], [1,0,0]   # S, T, W, Y, V
+#    ], dtype=np.float32)
+#}
