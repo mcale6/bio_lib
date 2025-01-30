@@ -42,6 +42,7 @@ def run(
                     cutoff=distance_cutoff,
                     acc_threshold=acc_threshold,
                     sphere_points=sphere_points,
+                    save_results=False,
                     output_dir=str(run_dir / pdb_file.stem),
                     quiet=quiet or output_format == "json"
                 )
@@ -53,7 +54,7 @@ def run(
                     distance_cutoff=distance_cutoff,
                     acc_threshold=acc_threshold,
                     sphere_points=sphere_points,
-                    save_results=True,
+                    save_results=False,
                     output_dir=str(run_dir / pdb_file.stem),
                     quiet=quiet
                 )
@@ -121,10 +122,10 @@ def main() -> int:
     parser.add_argument("--temperature", type=float, default=25.0, help="Temperature in Celsius (default: 25.0)")
     parser.add_argument("--distance-cutoff", type=float, default=5.5, help="Distance cutoff (Å) (default: 5.5)")
     parser.add_argument("--acc-threshold", type=float, default=0.05, help="Accessibility threshold (default: 0.05)")
+    parser.add_argument("--sphere-points", type=int, default=100, help="Number of points on sphere for accessibility calculation (default: 100)")
     parser.add_argument("--output-dir", type=Path, default=Path("results"), help="Output directory")
     parser.add_argument("--quiet", default=True, action="store_true", help="Outputs only the predicted affinity value")
-    parser.add_argument("--output-format", choices=["json", "human", "both"], default="both", 
-                       help="Output format (default: both)")
+    parser.add_argument("--output-format", choices=["json", "human", "both"], default="both",  help="Output format (default: both)")
     args = parser.parse_args()
     
     if not args.input_path.exists():
@@ -140,6 +141,7 @@ def main() -> int:
             temperature=args.temperature,
             distance_cutoff=args.distance_cutoff,
             acc_threshold=args.acc_threshold,
+            sphere_points=args.sphere_points,
             output_format=args.output_format,
             quiet=args.quiet
         )

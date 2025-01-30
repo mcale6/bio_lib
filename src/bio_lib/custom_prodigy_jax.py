@@ -234,6 +234,7 @@ def predict_binding_affinity_jax(
     acc_threshold: float = 0.05,
     temperature: float = 25.0,
     sphere_points: int = 100,
+    save_results=False,
     output_dir: Optional[str] = ".",
     quiet: bool = True,
 ) -> ProdigyResults:
@@ -298,7 +299,7 @@ def predict_binding_affinity_jax(
         structure_id=Path(pdb_path).stem,
         sasa_data=sasa_dict
     )
-    if output_dir:
+    if save_results:
         results.save_results(output_dir)
     
     if quiet == False:
