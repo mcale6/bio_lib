@@ -137,8 +137,9 @@ def predict_binding_affinity(
 
     if save_results:
         results.save_results(output_dir)
-    
     if quiet == False:
         print(results)
-
+    else:
+        print(f' Predicted binding affinity (kcal.mol-1): {np.float32(prodigy.ba_val)}')
+    
     return results

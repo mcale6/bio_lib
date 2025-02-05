@@ -41,8 +41,8 @@ _COEEFS= jnp.array([
 ])
 _INTERCEPT = jnp.array([nis_constants['intercept']])
 
-def load_pdb_to_af(pdb_path: str, target_chain: str, binder_chain: str):
-    with open(pdb_path, 'r') as f:
+def load_pdb_to_af(struct_path: str, target_chain: str, binder_chain: str):
+    with open(struct_path, 'r') as f:
         pdb_str = f.read()
     
     target = Protein.from_pdb_string(pdb_str, chain_id=target_chain)
@@ -115,7 +115,7 @@ def calculate_contacts(
     binder_pos: jnp.ndarray,
     target_mask: jnp.ndarray,
     binder_mask: jnp.ndarray,
-    cutoff: float = 5.5
+    distance_cutoff: float = 5.5
 ) -> jnp.ndarray:
     # Reshape masks to residue-atom format
     target_mask = target_mask.reshape(target_pos.shape[0], -1)
@@ -126,7 +126,7 @@ def calculate_contacts(
     dist2 = jnp.sum(diff ** 2, axis=-1)  # Shape: [T, B, 37, 37]
 
     # Combine masks and distance criteria
-    cutoff_sq = cutoff ** 2
+    cutoff_sq = distance_cutoff ** 2
     contact_mask = (
         (dist2 <= cutoff_sq) &
         (target_mask[:, None, :, None] > 0) & 
@@ -228,9 +228,9 @@ def dg_to_kd(dg: jnp.ndarray, temperature: float = 25.0) -> jnp.ndarray:
     return jnp.exp(dg_clipped / (R * temp_k))
 
 def predict_binding_affinity_jax(
-    pdb_path: str | Path,
+    struct_path: str | Path,
     selection: str = "A,B",
-    cutoff: float = 5.5,
+    distance_cutoff: float = 5.5,
     acc_threshold: float = 0.05,
     temperature: float = 25.0,
     sphere_points: int = 100,
@@ -241,7 +241,7 @@ def predict_binding_affinity_jax(
     """Run the full PRODIGY analysis pipeline."""
     print("Load pdb")
     target_chain, binder_chain = selection.split(",")
-    target, binder = load_pdb_to_af(pdb_path, target_chain, binder_chain)
+    target, binder = load_pdb_to_af(struct_path, target_chain, binder_chain)
     complex_positions = jnp.concatenate([target.atom_positions, binder.atom_positions], axis=0).reshape(-1, 3)
     complex_mask = jnp.concatenate([target.atom_mask, binder.atom_mask], axis=0).reshape(-1)
     print("Convert sequences to one-hot")
@@ -255,7 +255,7 @@ def predict_binding_affinity_jax(
         raise ValueError("Too many atoms for this method")
 
     print("Calculate contacts")
-    contacts = calculate_contacts(target.atom_positions, binder.atom_positions, target.atom_mask,  binder.atom_mask, cutoff=cutoff)
+    contacts = calculate_contacts(target.atom_positions, binder.atom_positions, target.atom_mask,  binder.atom_mask, distance_cutoff=distance_cutoff)
     print("Analyse_ contacts")
     contact_types = analyse_contacts(contacts, oh_target_seq, oh_binder_seq)
     print("Calculate SASA")
@@ -296,13 +296,16 @@ def predict_binding_affinity_jax(
         nis_aliphatic=np.float32(nis_acp[0]),
         nis_charged=np.float32(nis_acp[1]),
         nis_polar=np.float32(nis_acp[2]),
-        structure_id=Path(pdb_path).stem,
+        structure_id=Path(struct_path).stem,
         sasa_data=sasa_dict
     )
+
     if save_results:
         results.save_results(output_dir)
     
     if quiet == False:
         print(results)
+    else:
+        print(f' Predicted binding affinity (kcal.mol-1): {np.float32(dg[0])}')
     
     return results

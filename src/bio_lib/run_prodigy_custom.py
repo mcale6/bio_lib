@@ -5,7 +5,7 @@ import sys
 from datetime import datetime
 import time
 import statistics
-from typing import List, Dict
+from typing import Dict
 from bio_lib.custom_prodigy import predict_binding_affinity
 from bio_lib.custom_prodigy_jax import predict_binding_affinity_jax
 from bio_lib.helpers.utils import collect_pdb_files, format_time, NumpyEncoder
@@ -19,7 +19,7 @@ def run(
     distance_cutoff: float = 5.5,
     acc_threshold: float = 0.05,
     sphere_points: int = 100,
-    output_format: str = "both",
+    output_json: bool = True,
     quiet: bool = False
 ) -> Dict[str, Dict]:
     """Process all PDB files in the input path."""
@@ -37,14 +37,15 @@ def run(
             
             if use_jax:
                 result = predict_binding_affinity_jax(
-                    pdb_path=pdb_file,
+                    struct_path=pdb_file,
                     selection=selection,
-                    cutoff=distance_cutoff,
+                    temperature=temperature,
+                    distance_cutoff=distance_cutoff,
                     acc_threshold=acc_threshold,
                     sphere_points=sphere_points,
                     save_results=False,
                     output_dir=str(run_dir / pdb_file.stem),
-                    quiet=quiet or output_format == "json"
+                    quiet=quiet
                 )
             else:
                 result = predict_binding_affinity(
@@ -58,38 +59,25 @@ def run(
                     output_dir=str(run_dir / pdb_file.stem),
                     quiet=quiet
                 )
-
+            
+            result_dict = result.to_dict()
 
             execution_time = time.perf_counter() - start_time
             execution_times.append(execution_time)
-            
-            # Convert ProdigyResults to dictionary
-            if hasattr(result, 'to_dict'):
-                result_dict = result.to_dict()
-            else:
-                # For backwards compatibility
-                result_dict = result
-            
+    
             result_dict['execution_time'] = {
                 'seconds': execution_time,
                 'formatted': format_time(execution_time)
             }
             all_results[pdb_file.stem] = result_dict
-            
-            if output_format in ["json", "both"]:
+            print(f"Execution time: {format_time(execution_time)}")
+
+            if output_json:
                 output_path = run_dir / f"{pdb_file.stem}_results.json"
+                print(f"Results saved in: {output_path}")
                 with open(output_path, 'w') as f:
                     json.dump(result_dict, indent=2, cls=NumpyEncoder, fp=f)
-            
-            if output_format in ["human", "both"] and not quiet:
-                if hasattr(result, '__str__'):
-                    print(f"\nResults for {pdb_file.name}:")
-                    print(result)  # Use the custom __str__ method
-                else:
-                    print(f"\nResults for {pdb_file.name}:")
-                    print(json.dumps(result_dict, indent=2))
-                print(f"Execution time: {format_time(execution_time)}")
-                
+                            
         except Exception as e:
             print(f"\nError processing {pdb_file.name}: {str(e)}")
             all_results[pdb_file.stem] = {
@@ -107,9 +95,11 @@ def run(
         }
     
     # Save combined results
-    combined_output = run_dir / "combined_results.json"
-    with open(combined_output, 'w') as f:
-        json.dump(all_results, indent=2, cls=NumpyEncoder, fp=f)
+    if output_json:
+        combined_output = run_dir / "combined_results.json"
+        print(f"Combined Results saved in: {combined_output}")
+        with open(combined_output, 'w') as f:
+            json.dump(all_results, indent=2, cls=NumpyEncoder, fp=f)
     
     return all_results
 
@@ -124,8 +114,8 @@ def main() -> int:
     parser.add_argument("--acc-threshold", type=float, default=0.05, help="Accessibility threshold (default: 0.05)")
     parser.add_argument("--sphere-points", type=int, default=100, help="Number of points on sphere for accessibility calculation (default: 100)")
     parser.add_argument("--output-dir", type=Path, default=Path("results"), help="Output directory")
-    parser.add_argument("--quiet", default=True, action="store_true", help="Outputs only the predicted affinity value")
-    parser.add_argument("--output-format", choices=["json", "human", "both"], default="both",  help="Output format (default: both)")
+    parser.add_argument("--quiet", default=False, action="store_true", help="Outputs only the predicted affinity value")
+    parser.add_argument("--output-json", default=False, action="store_true",  help="Output format results")
     args = parser.parse_args()
     
     if not args.input_path.exists():
@@ -142,7 +132,7 @@ def main() -> int:
             distance_cutoff=args.distance_cutoff,
             acc_threshold=args.acc_threshold,
             sphere_points=args.sphere_points,
-            output_format=args.output_format,
+            output_json=args.output_json,
             quiet=args.quiet
         )
         return 0
