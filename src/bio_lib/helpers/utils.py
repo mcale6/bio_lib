@@ -82,3 +82,15 @@ def estimate_time(n_atoms: int) -> float:
     c_time = -0.3772  # Offset
     return a_time * np.exp(b_time * n_atoms) + c_time
 
+
+def generate_sphere_points(n: int) -> jnp.ndarray:
+    """ Generate approximately evenly distributed points on a unit sphere using golden spiral. """
+    if n <= 0: return jnp.zeros((0, 3))
+    if n == 1: return jnp.array([[0., 1., 0.]])
+    
+    i = jnp.arange(n, dtype=jnp.float32)
+    y = 1. - (2. * i) / (n - 1)
+    r = jnp.sqrt(1 - y**2)
+    theta = jnp.pi * (3. - jnp.sqrt(5.)) * i
+    
+    return jnp.stack([r * jnp.cos(theta), y, r * jnp.sin(theta)], axis=1)

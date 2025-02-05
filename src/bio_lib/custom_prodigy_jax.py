@@ -8,13 +8,13 @@ import bio_lib.common.residue_constants as residue_constants
 import bio_lib.common.protein as Protein
 from bio_lib.common.residue_classification import ResidueClassification
 from bio_lib.common.residue_library import default_library as residue_library
-from bio_lib.shrake_rupley_jax import calculate_sasa, calculate_sasa_batch
+from bio_lib.shrake_rupley_jax import calculate_sasa, calculate_sasa_batch, generate_sphere_points
 from bio_lib.helpers.utils import estimate_optimal_block_size
 from bio_lib.helpers.types import ContactAnalysis, ProdigyResults
 
 _DEFAULT_BACKEND = jax.default_backend()
-_SPHERE_POINTS_100 = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson100.xyz') , skiprows=1))
-_SPHERE_POINTS_1000 = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') , skiprows=1))
+_SPHERE_POINTS_100 = generate_sphere_points(100) # jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson100.xyz') , skiprows=1))
+_SPHERE_POINTS_1000 = generate_sphere_points(1000) #jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') , skiprows=1))
 _RESIDUE_RADII_MATRIX = jnp.array(residue_library.radii_matrix)
 _RELATIVE_SASA_ARRAY = jnp.array(ResidueClassification().relative_sasa_array)
 _RESCLASS_MATRICES_IC = jnp.array(ResidueClassification("ic").classification_matrix)
@@ -239,12 +239,12 @@ def predict_binding_affinity_jax(
     quiet: bool = True,
 ) -> ProdigyResults:
     """Run the full PRODIGY analysis pipeline."""
-    print("Load pdb")
+    #print("Load pdb")
     target_chain, binder_chain = selection.split(",")
     target, binder = load_pdb_to_af(struct_path, target_chain, binder_chain)
     complex_positions = jnp.concatenate([target.atom_positions, binder.atom_positions], axis=0).reshape(-1, 3)
     complex_mask = jnp.concatenate([target.atom_mask, binder.atom_mask], axis=0).reshape(-1)
-    print("Convert sequences to one-hot")
+    #print("Convert sequences to one-hot")
     num_classes = len(residue_constants.restypes)
     oh_target_seq = jax.nn.one_hot(target.aatype, num_classes=num_classes) #sequence_to_onehot
     oh_binder_seq = jax.nn.one_hot(binder.aatype, num_classes=num_classes)
@@ -254,12 +254,12 @@ def predict_binding_affinity_jax(
     if "METAL" in _DEFAULT_BACKEND and complex_positions.shape[0] > 15000:
         raise ValueError("Too many atoms for this method")
 
-    print("Calculate contacts")
+    #print("Calculate contacts")
     contacts = calculate_contacts(target.atom_positions, binder.atom_positions, target.atom_mask,  binder.atom_mask, distance_cutoff=distance_cutoff)
-    print("Analyse_ contacts")
+    #print("Analyse_ contacts")
     contact_types = analyse_contacts(contacts, oh_target_seq, oh_binder_seq)
-    print("Calculate SASA")
-    sp = _SPHERE_POINTS_100 if sphere_points == 100 else _SPHERE_POINTS_1000
+    #print("Calculate SASA")
+    sp = _SPHERE_POINTS_100 if sphere_points == 100 else (_SPHERE_POINTS_1000 if sphere_points == 1000 else generate_sphere_points(sphere_points))
     if "METAL" in _DEFAULT_BACKEND:
         bs = estimate_optimal_block_size(complex_positions.shape[0])
         complex_sasa = calculate_sasa_batch(
@@ -277,18 +277,18 @@ def predict_binding_affinity_jax(
             sphere_points=sp
         )
     
-    print("Calculate relative SASA")
+    #print("Calculate relative SASA")
     relative_sasa = calculate_relative_sasa(complex_sasa, oh_total_seq)
-    print("Calculate NIS")
+    #print("Calculate NIS")
     nis_acp = analyse_nis(relative_sasa, oh_total_seq, acc_threshold) 
-    print("Calculate binding affinity")
+    #print("Calculate binding affinity")
     # contact_types Returns order: [aa, cc, pp, ac, ap, cp]: we need ic_cc, ic_ca, ic_pp,, ic_pa, 
     dg = IC_NIS(contact_types[1], contact_types[3], contact_types[2], contact_types[4], nis_acp[0], nis_acp[1])
-    print("Convert to KD")
+    #print("Convert to KD")
     kd = dg_to_kd(dg, temperature=temperature)
-    print("Convert SASA data to array")
+    #print("Convert SASA data to array")
     sasa_dict = convert_sasa_to_array(complex_sasa, relative_sasa, target, binder)
-    print("Save Results")
+    #print("Save Results")
     results = ProdigyResults(
         contact_types=ContactAnalysis(contact_types),
         binding_affinity=np.float32(dg[0]),

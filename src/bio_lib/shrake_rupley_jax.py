@@ -2,16 +2,19 @@ import jax.numpy as jnp
 from jax import jit
 import numpy as np
 import pkg_resources
+from bio_lib.helpers.utils import generate_sphere_points
 
-_SPHERE_POINTS_100 = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson100.xyz') , skiprows=1))
-_SPHERE_POINTS_1000 = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') , skiprows=1))
+#_SPHERE_POINTS_100_tp = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson100.xyz') , skiprows=1)) # based on thomson problem
+#_SPHERE_POINTS_1000_tp = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') , skiprows=1))
+
+_SPHERE_POINTS_100 = generate_sphere_points(100)
 
 @jit
 def calculate_sasa(
     coords: jnp.ndarray, 
     vdw_radii: jnp.ndarray, 
     mask: jnp.ndarray, 
-    sphere_points: jnp.ndarray = _SPHERE_POINTS_1000,
+    sphere_points: jnp.ndarray = _SPHERE_POINTS_100,
     probe_radius: float = 1.4
 ) -> jnp.ndarray:
     """
