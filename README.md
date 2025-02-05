@@ -22,11 +22,12 @@ python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-u
 run-prodigy-custom PRODIGYdataset/ --use-jax # otherwise default is cpu version
 ```
 
-### Tested on a A100 GPU in Colab (run-prodigy-custom --use-jax)
-
+### Tested on a A100 GPU in Colab
+Data contains Ccmpiling time for the GPU version.
 ![Benchmark Analysis](benchmark_af/v2/ba_val_comp_A100_gpu_cpu.png)
 
-### SASA Values comparisons between freesasa (cpu version) and jax version (1000 Poitns)
+### SASA Values comparisons between freesasa (cpu version) and jax version (1000 Points)
+Pearson R: 0.99, Mean difference per atom across all structures in benchmark dataset (n=78): 0.59 A^2. 
 ![Benchmark Analysis](benchmark_af/v2/sasa_comparison.png)
 
 ## Usage Example
@@ -40,5 +41,5 @@ from pathlib import Path
 
 folder = Path("PRODIGYdataset") # folder or file_path with pdb files
 
-res = run(folder, output_dir=Path("results_cpu"), sphere_points=100, quiet=True, use_jax=True)
+res = run(folder, output_dir=Path("results"), sphere_points=100, quiet=True, use_jax=True)
 ```
