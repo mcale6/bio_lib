@@ -45,6 +45,7 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+.cursorignore
 
 # Python #
 ##########
@@ -57,4 +58,5 @@ __pycache__/
 dist/
 results/
 build/
+
 
