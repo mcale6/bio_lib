@@ -6,15 +6,14 @@ from bio_lib.helpers.utils import generate_sphere_points
 
 #_SPHERE_POINTS_100_tp = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson100.xyz') , skiprows=1)) # based on thomson problem
 #_SPHERE_POINTS_1000_tp = jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') , skiprows=1))
-
-_SPHERE_POINTS_100 = generate_sphere_points(100)
+#_SPHERE_POINTS_100 = generate_sphere_points(100)
 
 @jit
 def calculate_sasa(
     coords: jnp.ndarray, 
     vdw_radii: jnp.ndarray, 
     mask: jnp.ndarray, 
-    sphere_points: jnp.ndarray = _SPHERE_POINTS_100,
+    sphere_points: jnp.ndarray,
     probe_radius: float = 1.4
 ) -> jnp.ndarray:
     """
@@ -60,7 +59,7 @@ def calculate_sasa_batch(
     vdw_radii: jnp.ndarray, 
     mask: jnp.ndarray, 
     block_size: jnp.ndarray,
-    sphere_points: jnp.ndarray = _SPHERE_POINTS_100,
+    sphere_points: jnp.ndarray,
     probe_radius: float = 1.4,
 ) -> jnp.ndarray:
     """

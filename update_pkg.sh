@@ -1,7 +1,6 @@
 #!/bin/bash
 
 VERSION_FILE="./src/bio_lib/version.py"
-# Use awk instead of grep -oP for macOS compatibility
 CURRENT_VERSION=$(awk -F'"' '/^__version__/{print $2}' $VERSION_FILE)
 
 # Split version into major, minor, patch
@@ -27,7 +26,6 @@ fi
 
 NEW_VERSION="${major}.${minor}.${patch}"
 
-# Update version.py using perl instead of sed for macOS compatibility
 perl -pi -e "s/__version__ = \".*\"/__version__ = \"${NEW_VERSION}\"/" $VERSION_FILE
 
 echo "Updated version from ${CURRENT_VERSION} to ${NEW_VERSION}"

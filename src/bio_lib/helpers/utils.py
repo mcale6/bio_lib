@@ -1,10 +1,13 @@
 from pathlib import Path
 from typing import List
 from datetime import datetime
-from typing import Any, Dict, Union
+from typing import Any
+import jax
 import jax.numpy as jnp
 import numpy as np
 import json
+import subprocess
+import pandas as pd
 
 def convert_jax_arrays(obj: Any) -> Any:
     """Convert JAX arrays to native Python types recursively."""
@@ -76,12 +79,40 @@ def estimate_optimal_block_size(n_atoms: int) -> int:
 
     return max(5, min(block_size, max_block))
 
+def estimate_max_atoms(backend: str = None, safety_factor: float = 0.8, sphere_points: int = 100) -> int:
+    """Estimate maximum number of atoms that can be processed on current device."""
+    # For Apple Silicon
+    if backend == 'METAL':
+        # The value reported in your logs: ~24.0GB
+        available_memory = 20000000000  # bytes
+    else:
+        result = subprocess.check_output(['nvidia-smi', '--query-gpu=memory.used,memory.total', '--format=csv,nounits,noheader'])
+        used, total = map(int, result.decode('utf-8').split(','))
+        available_memory = total * 1e6
+    
+    # print(f"Available memory: {available_memory / 1e9:.2f} GB")
+    
+    # Memory requirements for main arrays in SASA calculation
+    bytes_per_float32 = 4
+    memory_per_atom = (
+        3 * bytes_per_float32 +  # coords: (N, 3)
+        sphere_points * 3 * bytes_per_float32 +  # scaled_points: (N, M, 3)
+        sphere_points * bytes_per_float32 * 1000 # dist2: (N, M, N)
+    )
+    
+    # print(f"Memory per atom: {memory_per_atom} bytes") 
+    max_atoms = int((available_memory * safety_factor) / memory_per_atom)
+    
+    num_str = str(max_atoms)
+    max_atoms = int(num_str[0] + "0" * (len(num_str) - 1))
+    print(f"Estimated maximum number of max atoms: {max_atoms}")
+    return max_atoms
+
 def estimate_time(n_atoms: int) -> float:
     a_time = 5.7156e-01  # Amplitude
     b_time = 1.7124e-04  # Growth rate
     c_time = -0.3772  # Offset
     return a_time * np.exp(b_time * n_atoms) + c_time
-
 
 def generate_sphere_points(n: int) -> jnp.ndarray:
     """ Generate approximately evenly distributed points on a unit sphere using golden spiral. """

@@ -9,20 +9,13 @@ import bio_lib.common.protein as Protein
 from bio_lib.common.residue_classification import ResidueClassification
 from bio_lib.common.residue_library import default_library as residue_library
 from bio_lib.shrake_rupley_jax import calculate_sasa, calculate_sasa_batch, generate_sphere_points
-from bio_lib.helpers.utils import estimate_optimal_block_size
+from bio_lib.helpers.utils import estimate_optimal_block_size, estimate_max_atoms
 from bio_lib.helpers.types import ContactAnalysis, ProdigyResults
 
 _DEFAULT_BACKEND = jax.default_backend()
-_SPHERE_POINTS_100 = generate_sphere_points(100) # jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson100.xyz') , skiprows=1))
-_SPHERE_POINTS_1000 = generate_sphere_points(1000) #jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') , skiprows=1))
-_RESIDUE_RADII_MATRIX = jnp.array(residue_library.radii_matrix)
-_RELATIVE_SASA_ARRAY = jnp.array(ResidueClassification().relative_sasa_array)
-_RESCLASS_MATRICES_IC = jnp.array(ResidueClassification("ic").classification_matrix)
-_RESCLASS_MATRICES_PROTORP  = jnp.array(ResidueClassification("protorp").classification_matrix) 
 _ATOMS_PER_RES = residue_constants.atom_type_num # 37
-
 # NIS Constants from the PRODIGY model
-nis_constants = {
+NIS_CONSTANTS = {
     'ic_cc': -0.09459,
     'ic_ca': -0.10007,
     'ic_pp': 0.19577,
@@ -31,15 +24,15 @@ nis_constants = {
     'p_nis_c': 0.13810,
     'intercept': -15.9433
 }
-_COEEFS= jnp.array([
-    nis_constants['ic_cc'],
-    nis_constants['ic_ca'],
-    nis_constants['ic_pp'], 
-    nis_constants['ic_pa'],
-    nis_constants['p_nis_a'],
-    nis_constants['p_nis_c']
-])
-_INTERCEPT = jnp.array([nis_constants['intercept']])
+# Tables
+RESIDUE_RADII_MATRIX = residue_library.radii_matrix
+RELATIVE_SASA_ARRAY = ResidueClassification().relative_sasa_array
+RESCLASS_MATRICES_IC = ResidueClassification("ic").classification_matrix
+RESCLASS_MATRICES_PROTORP  = ResidueClassification("protorp").classification_matrix
+
+# Sphere points
+_SPHERE_POINTS_100 = generate_sphere_points(100) # jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson100.xyz') , skiprows=1)) 
+_SPHERE_POINTS_1000 = generate_sphere_points(1000) #jnp.array(np.loadtxt(pkg_resources.resource_filename('bio_lib', 'data/thomson1000.xyz') , skiprows=1))
 
 def load_pdb_to_af(struct_path: str, target_chain: str, binder_chain: str):
     with open(struct_path, 'r') as f:
@@ -50,7 +43,7 @@ def load_pdb_to_af(struct_path: str, target_chain: str, binder_chain: str):
     
     return target, binder
 
-def get_atom_radii(seq_one_hot: jnp.ndarray, residue_raddi_matrix: jnp.ndarray = _RESIDUE_RADII_MATRIX ) -> jnp.ndarray:
+def get_atom_radii(seq_one_hot: jnp.ndarray, residue_raddi_matrix: jnp.ndarray) -> jnp.ndarray:
     return jnp.matmul(seq_one_hot, residue_raddi_matrix).reshape(-1)
 
 def convert_sasa_to_array(
@@ -139,10 +132,10 @@ def analyse_contacts(
     contacts: jnp.ndarray, 
     oh_target_seq: jnp.ndarray, 
     oh_binder_seq: jnp.ndarray,
-    class_matrix: jnp.ndarray = _RESCLASS_MATRICES_IC
+    class_matrix: jnp.ndarray
 ) -> jnp.ndarray:
     """Analyze contacts and calculate interaction probabilities."""
-    # Convert sequences to class probabilities (matches original logic)
+    # Convert sequences to class probabilities
     target_classes = oh_target_seq @ class_matrix  # [T, 3]
     binder_classes = oh_binder_seq @ class_matrix  # [B, 3]
 
@@ -165,8 +158,8 @@ def analyse_contacts(
 def analyse_nis(
     sasa_values: jnp.ndarray, 
     aa_probs: jnp.ndarray, 
+    character_matrix: jnp.ndarray,
     threshold: float = 0.05,
-    character_matrix: jnp.ndarray = _RESCLASS_MATRICES_PROTORP
 ) -> jnp.ndarray:
     """Calculate NIS percentages using precomputed character matrix."""
     p_chars = aa_probs @ character_matrix  # [n_res, 3]
@@ -177,13 +170,15 @@ def analyse_nis(
     
     return 100.0 * counts / total
 
-def IC_NIS(
+def ic_nis(
     ic_cc: jnp.ndarray,
     ic_ca: jnp.ndarray, 
     ic_pp: jnp.ndarray,
     ic_pa: jnp.ndarray,
     p_nis_a: jnp.ndarray,
-    p_nis_c: jnp.ndarray
+    p_nis_c: jnp.ndarray,
+    coeffs: jnp.ndarray,
+    intercept: jnp.ndarray,
 ) -> jnp.ndarray:
     """Calculate protein-protein binding affinity (ΔG) using interface contacts and non-interacting surface areas.
         ic_cc: Number of charged-charged contacts at interface
@@ -192,24 +187,26 @@ def IC_NIS(
         ic_pa: Number of polar-aliphatic contacts at interface
         p_nis_a: Percentage of non-interacting aliphatic surface area (0-100)
     """
-    # Clip NIS values to valid range
+    # Clip NIS values to valid range 
     p_nis_a = jnp.clip(p_nis_a, 0, 100)
     p_nis_c = jnp.clip(p_nis_c, 0, 100)
 
     # Stack inputs into single array
     inputs = jnp.array([ic_cc, ic_ca, ic_pp, ic_pa, p_nis_a, p_nis_c])
-    return jnp.dot(_COEEFS, inputs) +_INTERCEPT
+    return jnp.dot(coeffs, inputs) + intercept
 
 def calculate_relative_sasa(
     complex_sasa: jnp.ndarray,  # [n_atoms] or [n_res, 37] depending on format
     oh_total_seq: jnp.ndarray,     # [n_res, n_restypes] one-hot or probability vectors
+    relative_sasa_array: jnp.ndarray,
+    atom_num: int = _ATOMS_PER_RES,
 ) -> jnp.ndarray:
     """Calculate relative SASA using ResidueClassification."""
-    # AlphaFold format with 37 atoms per residue
-    residue_sasa = complex_sasa.reshape(-1, _ATOMS_PER_RES).sum(axis=1)
+    # AlphaFold format with 37 atoms per residu
+    residue_sasa = complex_sasa.reshape(-1, atom_num).sum(axis=1)
 
     # Calculate expected reference SASA based on amino acid probabilities
-    complex_ref = jnp.matmul(oh_total_seq, _RELATIVE_SASA_ARRAY)  # [n_res]
+    complex_ref = jnp.matmul(oh_total_seq, relative_sasa_array)  # [n_res]
     
     # Calculate relative SASA
     return residue_sasa / (complex_ref + 1e-8)
@@ -234,39 +231,71 @@ def predict_binding_affinity_jax(
     acc_threshold: float = 0.05,
     temperature: float = 25.0,
     sphere_points: int = 100,
-    save_results=False,
+    save_results: bool = False,
     output_dir: Optional[str] = ".",
     quiet: bool = True,
 ) -> ProdigyResults:
     """Run the full PRODIGY analysis pipeline."""
-    #print("Load pdb")
+    # Initialize constants as JAX arrays
+    _residue_raddi_matrix = jnp.array(RESIDUE_RADII_MATRIX)
+    _relative_sasa_array = jnp.array(RELATIVE_SASA_ARRAY)
+    _resclasse_matrices_ic = jnp.array(RESCLASS_MATRICES_IC)
+    _resclasse_matrices_protrop = jnp.array(RESCLASS_MATRICES_PROTORP)
+    _sphere_point = generate_sphere_points(sphere_points)
+    _coeffs = jnp.array([
+        NIS_CONSTANTS['ic_cc'],
+        NIS_CONSTANTS['ic_ca'],
+        NIS_CONSTANTS['ic_pp'], 
+        NIS_CONSTANTS['ic_pa'],
+        NIS_CONSTANTS['p_nis_a'],
+        NIS_CONSTANTS['p_nis_c']
+    ])
+    _intercept = jnp.array([NIS_CONSTANTS['intercept']])
+
+    # Load and prepare protein structures
     target_chain, binder_chain = selection.split(",")
     target, binder = load_pdb_to_af(struct_path, target_chain, binder_chain)
+    
+    # Combine positions and masks
     complex_positions = jnp.concatenate([target.atom_positions, binder.atom_positions], axis=0).reshape(-1, 3)
     complex_mask = jnp.concatenate([target.atom_mask, binder.atom_mask], axis=0).reshape(-1)
-    #print("Convert sequences to one-hot")
+
+    # Convert sequences to one-hot encoding
     num_classes = len(residue_constants.restypes)
-    oh_target_seq = jax.nn.one_hot(target.aatype, num_classes=num_classes) #sequence_to_onehot
+    oh_target_seq = jax.nn.one_hot(target.aatype, num_classes=num_classes)
     oh_binder_seq = jax.nn.one_hot(binder.aatype, num_classes=num_classes)
     oh_total_seq = jnp.concatenate([oh_target_seq, oh_binder_seq])
-    complex_radii = jnp.concatenate([get_atom_radii(oh_target_seq), get_atom_radii(oh_binder_seq)])
+    complex_radii = jnp.concatenate([
+        get_atom_radii(oh_target_seq, _residue_raddi_matrix), 
+        get_atom_radii(oh_binder_seq, _residue_raddi_matrix)
+    ])
 
-    if "METAL" in _DEFAULT_BACKEND and complex_positions.shape[0] > 15000:
+    # Check for GPU memory limitations
+    n_atoms = complex_positions.shape[0]
+    max_atoms = estimate_max_atoms(_DEFAULT_BACKEND, safety_factor=0.8, sphere_points=sphere_points)
+    print(f"n_atoms (+embedding): {n_atoms}, max_atoms: {max_atoms}")
+    if n_atoms > max_atoms:
         raise ValueError("Too many atoms for this method")
 
-    #print("Calculate contacts")
-    contacts = calculate_contacts(target.atom_positions, binder.atom_positions, target.atom_mask,  binder.atom_mask, distance_cutoff=distance_cutoff)
-    #print("Analyse_ contacts")
-    contact_types = analyse_contacts(contacts, oh_target_seq, oh_binder_seq)
-    #print("Calculate SASA")
-    sp = _SPHERE_POINTS_100 if sphere_points == 100 else (_SPHERE_POINTS_1000 if sphere_points == 1000 else generate_sphere_points(sphere_points))
+    # Calculate interface contacts
+    contacts = calculate_contacts(
+        target.atom_positions, 
+        binder.atom_positions, 
+        target.atom_mask,  
+        binder.atom_mask, 
+        distance_cutoff=distance_cutoff
+    )
+    contact_types = analyse_contacts(contacts, oh_target_seq, oh_binder_seq, _resclasse_matrices_ic)
+
+    # Calculate SASA
     if "METAL" in _DEFAULT_BACKEND:
         bs = estimate_optimal_block_size(complex_positions.shape[0])
+        print(f"Too many atoms to handle for GPU, uses batch calculation.Using block size: {bs}")
         complex_sasa = calculate_sasa_batch(
             coords=complex_positions, 
             vdw_radii=complex_radii, 
             mask=complex_mask, 
-            sphere_points=sp, 
+            sphere_points=_sphere_point, 
             block_size=bs
         )
     else:
@@ -274,21 +303,23 @@ def predict_binding_affinity_jax(
             coords=complex_positions, 
             vdw_radii=complex_radii, 
             mask=complex_mask, 
-            sphere_points=sp
+            sphere_points=_sphere_point
         )
-    
-    #print("Calculate relative SASA")
-    relative_sasa = calculate_relative_sasa(complex_sasa, oh_total_seq)
-    #print("Calculate NIS")
-    nis_acp = analyse_nis(relative_sasa, oh_total_seq, acc_threshold) 
-    #print("Calculate binding affinity")
-    # contact_types Returns order: [aa, cc, pp, ac, ap, cp]: we need ic_cc, ic_ca, ic_pp,, ic_pa, 
-    dg = IC_NIS(contact_types[1], contact_types[3], contact_types[2], contact_types[4], nis_acp[0], nis_acp[1])
-    #print("Convert to KD")
+
+    # Calculate relative SASA and NIS
+    relative_sasa = calculate_relative_sasa(complex_sasa, oh_total_seq, _relative_sasa_array)
+    nis_acp = analyse_nis(relative_sasa, oh_total_seq, _resclasse_matrices_protrop, acc_threshold)
+
+    # Calculate binding affinity and dissociation constant
+    dg = ic_nis(
+        contact_types[1], contact_types[3], contact_types[2], 
+        contact_types[4], nis_acp[0], nis_acp[1], 
+        _coeffs, _intercept
+    )
     kd = dg_to_kd(dg, temperature=temperature)
-    #print("Convert SASA data to array")
+
+    # Prepare results
     sasa_dict = convert_sasa_to_array(complex_sasa, relative_sasa, target, binder)
-    #print("Save Results")
     results = ProdigyResults(
         contact_types=ContactAnalysis(contact_types),
         binding_affinity=np.float32(dg[0]),
@@ -303,7 +334,7 @@ def predict_binding_affinity_jax(
     if save_results:
         results.save_results(output_dir)
     
-    if quiet == False:
+    if not quiet:
         print(results)
     else:
         print(f' Predicted binding affinity (kcal.mol-1): {np.float32(dg[0])}')
