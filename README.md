@@ -37,7 +37,9 @@ python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-u
 ## Limitations
 - Maximum of 6000 atoms for M1 GPU calculations
 - SASA calculation has ~25% overhead compilation time
+- SASA calculation is the slowest part of the code, because the embeeding yields 37 atoms per residue increasing the calculation
 - Higher memory requirements for fully vectorized mode
+- PDB Files should be cleaned before using the code with jax (cpu version handles this) (work in progress)
 
 ## Usage
 
@@ -75,7 +77,7 @@ Tested on A100 and M1 GPUs (including compilation time):
 ![Benchmark Analysis](benchmark_af/v3/v3_bechmark_af.png)
 
 ### SASA Accuracy
-Comparison between FreeSASA (CPU) and JAX version (1000 points):
+Comparison between FreeSASA (CPU) and JAX version (100 points):
 - Pearson correlation: 0.99
 - Mean difference per atom: 0.59 Å² (across 78 benchmark structures)
 ![SASA Comparison](benchmark_af/v2/sasa_comparison.png)
