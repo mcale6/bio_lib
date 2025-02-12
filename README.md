@@ -5,7 +5,7 @@ A Python library for analyzing protein interactions, calculating Solvent Accessi
 ## Installation
 
 ```bash
-python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ bio_lib
+python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ bio_lib=
 ```
 
 ## Core Features 
@@ -25,7 +25,7 @@ python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-u
     - Fully vectorized (optimized for A100 GPUs, requires more memory)
 
 ## Use Cases
-- Protein design using AlphaFold backpropagation (see example notebook)
+- Protein design using AlphaFold backpropagation (see example notebook) -> https://colab.research.google.com/drive/1PIwvXKvIuqAFhGxGDAn9j-FSd2ta4m4v#scrollTo=mv_eDYxgbjrx
 - Binding affinity prediction for protein complexes
 - Surface area analysis of protein structures
 
@@ -37,7 +37,7 @@ python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-u
 ## Limitations
 - Maximum of 6000 atoms for M1 GPU calculations
 - SASA calculation has ~25% overhead compilation time
-- SASA calculation is the slowest part of the code, because the embeeding yields 37 atoms per residue increasing the calculation
+- SASA calculation is the slowest part of the code, because the AF2 Protein-embedding yields 37 atoms per residue, increasing the calculation time by a factor of 37 * sphere_points.
 - Higher memory requirements for fully vectorized mode
 - PDB Files should be cleaned before using the code with jax (cpu version handles this) (work in progress)
 
